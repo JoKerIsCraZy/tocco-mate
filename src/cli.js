@@ -3,7 +3,7 @@
  * Tocco WISS CLI mit automatischem MS-SSO-Login.
  *
  * Setup (einmalig):
- *   cd tocco-cli
+ *   cd tocco-mate
  *   npm install
  *   npx playwright install chromium
  *   cp .env.example .env        # Windows: copy .env.example .env

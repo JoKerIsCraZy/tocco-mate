@@ -1,12 +1,12 @@
-# tocco-cli — Minimal-Setup
+# tocco-mate — Minimal-Setup
 # Nur die 3 Pflicht-Variablen. Rest hat sinnvolle Defaults.
 # Start: docker compose -f docker-compose.easy.yml up -d
 
 services:
-  tocco-cli:
-    image: tocco-cli:latest
+  tocco-mate:
+    image: tocco-mate:latest
     build: .
-    container_name: tocco-cli
+    container_name: tocco-mate
     restart: unless-stopped
     ports:
       - "3000:3000"

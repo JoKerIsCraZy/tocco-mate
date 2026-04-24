@@ -1,5 +1,5 @@
 /**
- * SQLite-Schicht für Tocco-CLI — nutzt Nodes eingebautes node:sqlite (Node 22.5+).
+ * SQLite-Schicht für Tocco Mate — nutzt Nodes eingebautes node:sqlite (Node 22.5+).
  * Keine npm-Dependency, keine Build-Tools nötig.
  */
 

@@ -1,8 +1,8 @@
 {
-  "name": "tocco-cli",
+  "name": "tocco-mate",
   "version": "1.0.0",
   "private": true,
-  "description": "Tocco WISS CLI mit automatischem MS-SSO-Login",
+  "description": "Inoffizieller Scraper fuer das WISS Tocco-Schulportal (Noten + Stundenplan) mit Dashboard, Scheduler und Telegram-Bot",
   "main": "cli.js",
   "scripts": {
     "start": "node --experimental-sqlite --no-warnings=ExperimentalWarning src/cli.js",

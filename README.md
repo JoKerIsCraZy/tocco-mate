@@ -1,4 +1,4 @@
-# tocco-cli
+# tocco-mate
 
 Inoffizieller Scraper für das WISS Tocco-Schulportal. Holt automatisch Noten & Stundenplan per Microsoft SSO, speichert sie lokal und zeigt sie in einem modernen Web-UI.
 
@@ -17,11 +17,11 @@ Inoffizieller Scraper für das WISS Tocco-Schulportal. Holt automatisch Noten & 
 
 ```bash
 git clone <repo>
-cd tocco-cli
+cd tocco-mate
 cp .env.example .env
 # .env öffnen und MS_EMAIL + MS_PASSWORD eintragen
 docker compose up -d
-docker compose logs -f tocco-cli   # API_TOKEN aus dem Log kopieren
+docker compose logs -f tocco-mate   # API_TOKEN aus dem Log kopieren
 ```
 
 Dann im Browser `http://localhost:3000` öffnen und den kopierten Token eingeben.
@@ -90,7 +90,7 @@ Das Verzeichnis enthält `storage.json` mit aktiven Browser-Cookies (Live-Login)
 ## Architektur
 
 ```
-tocco-cli/
+tocco-mate/
 ├── src/
 │   ├── server.js       # Express-API, Scheduler, SSE-Stream
 │   ├── scraper.js      # Playwright-Login, Noten- und Stundenplan-Scraping
@@ -169,7 +169,7 @@ Beiträge sind willkommen — siehe [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## English Summary
 
-**tocco-cli** is an unofficial scraper for the WISS Tocco school portal (Switzerland). It logs in automatically via Microsoft SSO, fetches grades and timetable data, stores everything in a local SQLite database, and serves a web dashboard on port 3000.
+**tocco-mate** is an unofficial scraper for the WISS Tocco school portal (Switzerland). It logs in automatically via Microsoft SSO, fetches grades and timetable data, stores everything in a local SQLite database, and serves a web dashboard on port 3000.
 
 **Docker quick-start:**
 ```bash

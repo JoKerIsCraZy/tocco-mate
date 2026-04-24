@@ -13,7 +13,7 @@
 version: '3.9'
 
 services:
-  tocco-cli:
+  tocco-mate:
     # Rebuild from dockerfile target=runtime on every up (for quick iteration)
     build:
       context: .

@@ -1,4 +1,4 @@
-# tocco-cli Production Dockerfile
+# tocco-mate Production Dockerfile
 # Base: mcr.microsoft.com/playwright:v1.59.1-jammy (Node 24 + Chromium + system deps)
 # IMPORTANT: Playwright version MUST match package.json exactly (browser binaries are version-locked).
 # Multi-stage: deps -> runtime with non-root user

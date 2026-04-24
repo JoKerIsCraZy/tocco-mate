@@ -1,4 +1,4 @@
-# Beitragen zu tocco-cli
+# Beitragen zu tocco-mate
 
 Danke für dein Interesse! Dieses Dokument erklärt, wie du das Projekt lokal aufsetzt und Beiträge einreichst.
 
@@ -6,7 +6,7 @@ Danke für dein Interesse! Dieses Dokument erklärt, wie du das Projekt lokal au
 
 ```bash
 git clone <repo>
-cd tocco-cli
+cd tocco-mate
 cp .env.example .env          # Werte eintragen (MS_EMAIL, MS_PASSWORD)
 npm install
 npm run setup                 # Playwright Chromium installieren
@@ -20,7 +20,7 @@ npm start
 ## Projektstruktur
 
 ```
-tocco-cli/
+tocco-mate/
 ├── src/
 │   ├── server.js       # Express-API, Scheduler, SSE
 │   ├── scraper.js      # Playwright-Login + Noten/Stundenplan-Scraping

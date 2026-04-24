@@ -1,12 +1,12 @@
 # Docker Deployment Guide
 
-This guide explains how to build, run, and manage tocco-cli in Docker.
+This guide explains how to build, run, and manage tocco-mate in Docker.
 
 ## Quick Start
 
 ### Build the image
 ```bash
-docker build -t tocco-cli .
+docker build -t tocco-mate .
 ```
 
 ### Run with compose
@@ -19,7 +19,7 @@ cp .env.example .env
 docker-compose up -d
 
 # View logs
-docker-compose logs -f tocco-cli
+docker-compose logs -f tocco-mate
 
 # Stop container
 docker-compose down
@@ -96,7 +96,7 @@ Container includes built-in healthcheck via HTTP GET to `/healthz`:
 docker ps  # STATUS will show "healthy" or "unhealthy"
 
 # Manual healthcheck
-docker exec tocco-cli node -e "require('http').get('http://127.0.0.1:3000/healthz', r => console.log(r.statusCode))"
+docker exec tocco-mate node -e "require('http').get('http://127.0.0.1:3000/healthz', r => console.log(r.statusCode))"
 ```
 
 Healthcheck will trigger automatic restart if `restart: unless-stopped` is set.
@@ -142,12 +142,12 @@ Both allow Chromium to run without strict sandboxing. Option B is preferred for 
 lsof -i :3000
 
 # Or use a different port
-docker-compose run tocco-cli -e PORT=3001 # (requires compose override)
+docker-compose run tocco-mate -e PORT=3001 # (requires compose override)
 ```
 
 ### Missing .env secrets
 ```bash
-docker-compose logs tocco-cli
+docker-compose logs tocco-mate
 # Should show: "API_TOKEN auto-generated: ..."
 # Check data/.api-token for generated token
 ```
@@ -171,11 +171,11 @@ chmod 750 ./data
 ### 2. Build once, run everywhere
 ```bash
 # Build on CI/CD
-docker build -t tocco-cli:v1.0.0 .
+docker build -t tocco-mate:v1.0.0 .
 
 # Push to registry (optional)
-docker tag tocco-cli:v1.0.0 myregistry.com/tocco-cli:v1.0.0
-docker push myregistry.com/tocco-cli:v1.0.0
+docker tag tocco-mate:v1.0.0 myregistry.com/tocco-mate:v1.0.0
+docker push myregistry.com/tocco-mate:v1.0.0
 
 # Deploy to production
 docker-compose pull  # If using registry
@@ -188,10 +188,10 @@ docker-compose up -d
 docker-compose ps
 
 # Health status
-docker-compose exec tocco-cli curl -s http://127.0.0.1:3000/healthz | jq
+docker-compose exec tocco-mate curl -s http://127.0.0.1:3000/healthz | jq
 
 # Logs with timestamp
-docker-compose logs --timestamps tocco-cli
+docker-compose logs --timestamps tocco-mate
 ```
 
 ### 4. Updates
@@ -203,7 +203,7 @@ docker-compose pull
 docker-compose build
 
 # Restart with zero downtime
-docker-compose up -d --no-deps --build tocco-cli
+docker-compose up -d --no-deps --build tocco-mate
 ```
 
 ### 5. Backup
@@ -246,4 +246,4 @@ See `.k8s/` directory if provided.
 
 ---
 
-**Questions?** Check logs: `docker-compose logs -f tocco-cli`
+**Questions?** Check logs: `docker-compose logs -f tocco-mate`

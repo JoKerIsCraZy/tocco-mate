@@ -1,12 +1,12 @@
 version: '3.9'
 
 services:
-  tocco-cli:
+  tocco-mate:
     build:
       context: .
       dockerfile: Dockerfile
-    image: tocco-cli:latest
-    container_name: tocco-cli
+    image: tocco-mate:latest
+    container_name: tocco-mate
     restart: unless-stopped
 
     # Bind to all interfaces (LAN-open)
