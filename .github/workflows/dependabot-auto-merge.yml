@@ -1,0 +1,39 @@
+name: Dependabot Auto-Merge
+
+on: pull_request_target
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Auto-merge safe dependabot updates
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge (patch + minor only)
+        if: >
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr merge --auto --rebase --delete-branch "$PR_URL"
+          gh pr comment "$PR_URL" --body "🤖 Auto-merge aktiviert (${{ steps.meta.outputs.update-type }}). Wird gemerged sobald alle Checks grün sind."
+
+      - name: Flag major update for manual review
+        if: steps.meta.outputs.update-type == 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr comment "$PR_URL" --body "⚠️  **Major-Version-Bump** (${{ steps.meta.outputs.dependency-names }}: ${{ steps.meta.outputs.previous-version }} → ${{ steps.meta.outputs.new-version }}) — manueller Review erforderlich wegen möglicher Breaking Changes."
+          gh pr edit "$PR_URL" --add-label "major-bump,needs-review"
