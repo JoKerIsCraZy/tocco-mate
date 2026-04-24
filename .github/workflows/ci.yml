@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-check:
+    name: Lint & Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci --ignore-scripts
+
+      - name: Node syntax check (src/)
+        run: |
+          for f in src/*.js; do
+            echo "checking $f"
+            node --check "$f"
+          done
+
+      - name: Node syntax check (web/)
+        run: node --check web/app.js
+
+      - name: Module load test
+        run: |
+          node --experimental-sqlite --no-warnings=ExperimentalWarning -e "
+            require('./src/settings');
+            require('./src/logger');
+            require('./src/db');
+            require('./src/bot');
+            require('./src/scraper');
+            console.log('all modules load OK');
+          "
+
+  security-audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci --ignore-scripts
+      - name: Audit runtime deps
+        run: npm audit --omit=dev --audit-level=high
+
+  docker-build:
+    name: Docker build (smoke)
+    runs-on: ubuntu-latest
+    needs: lint-and-check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: tocco-mate:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke-test container
+        run: |
+          docker run -d --name ci-smoke \
+            -e API_TOKEN=smoketest-token-abc123456789 \
+            -e MS_EMAIL=ci@example.com \
+            -e MS_PASSWORD=nope \
+            -p 3099:3000 \
+            -e PORT=3000 \
+            tocco-mate:ci
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sf http://localhost:3099/healthz; then
+              echo "healthz OK"; break
+            fi
+            sleep 2
+          done
+          echo ""
+          # must reject without token
+          code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3099/api/status)
+          [ "$code" = "401" ] || { echo "expected 401 got $code"; docker logs ci-smoke; exit 1; }
+          echo "auth gate OK"
+          docker rm -f ci-smoke
