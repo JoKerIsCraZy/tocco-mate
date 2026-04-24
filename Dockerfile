@@ -9,6 +9,17 @@ WORKDIR /app
 ENV NODE_ENV=production \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
+# Pull latest security patches from Ubuntu + upgrade bundled npm
+# (fixes Trivy HIGH in /usr/lib/node_modules/npm: tar, minimatch, picomatch,
+#  and MEDIUM/LOW in openssl, libssl3, libudev1, libgdk-pixbuf, libcap2)
+USER root
+RUN apt-get update \
+ && apt-get upgrade -y \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/* \
+ && npm install -g npm@latest \
+ && npm cache clean --force
+
 # --------- deps: install production dependencies ---------
 FROM base AS deps
 COPY package.json package-lock.json ./

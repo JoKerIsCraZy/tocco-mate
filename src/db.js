@@ -370,11 +370,6 @@ function getHistory(db, kuerzelId) {
   return stmt.all(kuerzelId) || [];
 }
 
-function round2(n) {
-  if (n == null || Number.isNaN(n)) return null;
-  return Math.round(n * 100) / 100;
-}
-
 function round1(n) {
   if (n == null || Number.isNaN(n)) return null;
   return Math.round(n * 10) / 10;

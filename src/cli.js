@@ -119,7 +119,7 @@ async function main() {
   console.log('🎓 Tocco WISS CLI');
 
   const result = await scraper.runScrape(config, onLog);
-  const { noten, stundenplan, rawText, fetchedAt } = result;
+  const { noten, stundenplan } = result;
 
   renderNoten(noten);
   renderStundenplan(stundenplan);
