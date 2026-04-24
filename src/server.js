@@ -90,13 +90,14 @@ function ensureApiToken() {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   } catch (_) { /* ignore */ }
 
-  if (fs.existsSync(API_TOKEN_FILE)) {
-    try {
-      const persisted = fs.readFileSync(API_TOKEN_FILE, 'utf8').trim();
-      if (persisted && persisted.length >= MIN_TOKEN_LENGTH) {
-        return { token: persisted, generated: false };
-      }
-    } catch (_) { /* neu generieren */ }
+  // Direkt lesen (vermeidet TOCTOU zwischen existsSync und readFileSync)
+  try {
+    const persisted = fs.readFileSync(API_TOKEN_FILE, 'utf8').trim();
+    if (persisted && persisted.length >= MIN_TOKEN_LENGTH) {
+      return { token: persisted, generated: false };
+    }
+  } catch (err) {
+    if (err && err.code !== 'ENOENT') { /* read error — neu generieren */ }
   }
 
   // Neuen Token generieren

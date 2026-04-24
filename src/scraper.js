@@ -93,7 +93,11 @@ async function ensureLoggedIn(config, onLog, onPhase) {
     onLog('📍 Geladen: ' + page.url(), 'info');
 
     // Falls die Seite schon direkt MS-Login zeigt (z.B. durch Session-Hint) → überspringen
-    const alreadyAtMS = /login\.microsoft(online)?\.com|login\.live\.com/.test(page.url());
+    let alreadyAtMS = false;
+    try {
+      const host = new URL(page.url()).hostname;
+      alreadyAtMS = /^login\.microsoft(online)?\.com$|^login\.live\.com$/.test(host);
+    } catch (_) { /* invalid URL */ }
 
     let loginPage = page;
     if (!alreadyAtMS) {

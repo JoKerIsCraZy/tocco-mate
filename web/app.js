@@ -632,7 +632,7 @@ function renderSettings(s) {
 
   $('#msEmail').value           = s.msEmail || '';
   $('#msPassword').value        = '';
-  $('#msPassword').placeholder  = s.password ? '••• (unverändert)' : 'Passwort setzen';
+  $('#msPassword').placeholder  = s.passwordSet ? '••• (unverändert)' : 'Passwort setzen';
   $('#userPk').value            = s.userPk || '';
   $('#baseUrl').value           = s.baseUrl || '';
   $('#notenUrl').value          = s.notenUrl || '';
