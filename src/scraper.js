@@ -51,10 +51,11 @@ async function api(page, restBase, endpoint, opts = {}) {
   }, { url: restBase + endpoint, opts });
 }
 
-async function ensureLoggedIn(config, onLog) {
+async function ensureLoggedIn(config, onLog, onPhase) {
   const { msEmail, msPassword, baseUrl, headless, slowMo, storageFile, cwd } = config;
   const restBase = baseUrl + '/nice2';
   const chromium = requirePlaywright();
+  if (typeof onPhase === 'function') onPhase('browser');
   onLog('🌐 Starte ' + (headless ? 'headless ' : 'sichtbaren ') + 'Chromium' + (slowMo ? ' (slow-mo ' + slowMo + 'ms)' : ''), 'info');
   const browser = await chromium.launch({ headless, slowMo });
 
@@ -77,6 +78,7 @@ async function ensureLoggedIn(config, onLog) {
   }
 
   // 2. Frischer Login
+  if (typeof onPhase === 'function') onPhase('login');
   if (!msEmail || !msPassword) {
     await browser.close();
     throw new Error('MS_EMAIL + MS_PASSWORD fehlen in config.');
@@ -501,8 +503,17 @@ function parseStundenplan(text) {
 }
 
 // ---------- Public API ----------
-async function runScrape(config, onLog) {
+// runScrape(config, onLog, onPhase?)
+//   onLog(message, level)           — free-form log messages
+//   onPhase(phase)                  — coarse progress phases:
+//     'browser'  → Chromium launch
+//     'login'    → Microsoft SSO login flow (only if no cached session)
+//     'noten'    → loading + parsing grades page
+//     'stundenplan' → loading + parsing schedule page
+//   Caller may layer 'saving' / null on top after runScrape returns.
+async function runScrape(config, onLog, onPhase) {
   const log = onLog || (() => {});
+  const phase = typeof onPhase === 'function' ? onPhase : () => {};
   const cfg = {
     baseUrl: 'https://wiss.tocco.ch',
     headless: true,
@@ -515,14 +526,16 @@ async function runScrape(config, onLog) {
   if (!cfg.storageFile) throw new Error('config.storageFile fehlt');
   if (!cfg.cwd) throw new Error('config.cwd fehlt');
 
-  const { browser, page } = await ensureLoggedIn(cfg, log);
+  const { browser, page } = await ensureLoggedIn(cfg, log, phase);
 
   try {
+    phase('noten');
     const notenRaw = await scrapePage(page, cfg.notenUrl, 'Noten', log, {
       afterLoad: (p) => setPageSize(p, 100, log)
     });
     const noten = parseNoten(notenRaw.text || '');
 
+    phase('stundenplan');
     const spRaw = await scrapePage(page, cfg.stundenplanUrl, 'Stundenplan', log, {
       afterLoad: (p) => setPageSize(p, 100, log)
     });

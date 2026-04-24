@@ -162,7 +162,9 @@ const state = {
   lastError: null,         // string | null
   lastStats: null,         // letzter scraper-Result (summary)
   timer: null,             // scheduled setTimeout handle
-  lastManualAt: 0          // Timestamp (ms) des letzten manuellen scrape-Triggers (Cooldown)
+  lastManualAt: 0,         // Timestamp (ms) des letzten manuellen scrape-Triggers (Cooldown)
+  currentPhase: null,      // 'starting'|'browser'|'login'|'noten'|'stundenplan'|'saving'|null
+  phaseStartedAt: null     // ISO timestamp — wann die aktuelle Phase begann
 };
 
 const sseClients = new Set();
@@ -237,8 +239,17 @@ function statusPayload() {
     lastError: state.lastError,
     enabled: Boolean(s.autoRun),
     intervalMinutes: s.intervalMinutes,
-    serverTime: new Date().toISOString()
+    serverTime: new Date().toISOString(),
+    currentPhase: state.currentPhase,
+    phaseStartedAt: state.phaseStartedAt
   };
+}
+
+function setPhase(phase) {
+  if (state.currentPhase === phase) return;
+  state.currentPhase = phase;
+  state.phaseStartedAt = phase ? new Date().toISOString() : null;
+  broadcastStatus();
 }
 
 function apiError(res, status, message) {
@@ -386,7 +397,7 @@ async function runScrapeCycle(reason) {
   state.running = true;
   state.lastError = null;
   clearTimer();
-  broadcastStatus();
+  setPhase('starting');
   logger.log(`🚀 Scrape gestartet (reason=${reason})`, 'info');
 
   const startTs = Date.now();
@@ -395,10 +406,15 @@ async function runScrapeCycle(reason) {
 
   try {
     const cfg = buildScraperConfig(s);
-    const scraped = await scraper.runScrape(cfg, (msg, level) => logger.log(msg, level));
+    const scraped = await scraper.runScrape(
+      cfg,
+      (msg, level) => logger.log(msg, level),
+      (phase) => setPhase(phase)
+    );
     result = scraped;
 
     // Persistieren
+    setPhase('saving');
     database = db.open();
     const nStats = db.saveNoten(database, scraped.noten || []);
     const sStats = db.saveStundenplan(database, scraped.stundenplan || []);
@@ -430,6 +446,7 @@ async function runScrapeCycle(reason) {
       try { database.close(); } catch (_) { /* swallow */ }
     }
     state.running = false;
+    setPhase(null);
     broadcastStatus();
     broadcastSse('scrape_done', {
       ok: !state.lastError,

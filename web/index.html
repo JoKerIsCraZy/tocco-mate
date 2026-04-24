@@ -82,6 +82,41 @@
     </div>
   </header>
 
+  <!-- PROGRESS BAR (nur während Scrape sichtbar) -->
+  <div id="progressBar" class="progress" hidden aria-live="polite">
+    <div class="progress__inner">
+      <div class="progress__steps" id="progressSteps">
+        <div class="progress__step" data-phase="browser">
+          <span class="progress__step-dot"></span>
+          <span class="progress__step-label">Browser</span>
+        </div>
+        <div class="progress__step" data-phase="login">
+          <span class="progress__step-dot"></span>
+          <span class="progress__step-label">Login</span>
+        </div>
+        <div class="progress__step" data-phase="noten">
+          <span class="progress__step-dot"></span>
+          <span class="progress__step-label">Noten</span>
+        </div>
+        <div class="progress__step" data-phase="stundenplan">
+          <span class="progress__step-dot"></span>
+          <span class="progress__step-label">Stundenplan</span>
+        </div>
+        <div class="progress__step" data-phase="saving">
+          <span class="progress__step-dot"></span>
+          <span class="progress__step-label">Speichern</span>
+        </div>
+      </div>
+      <div class="progress__track">
+        <div class="progress__fill" id="progressFill"></div>
+      </div>
+      <div class="progress__caption">
+        <span id="progressPhaseLabel">Initialisiere…</span>
+        <span class="progress__timer mono" id="progressTimer">0:00</span>
+      </div>
+    </div>
+  </div>
+
   <!-- TABS -->
   <nav class="tabs" role="tablist" aria-label="Bereiche">
     <div class="tabs__inner">

@@ -179,6 +179,26 @@ function initTabs() {
 }
 
 // ---------- status pill ----------
+const PHASE_ORDER = ['browser', 'login', 'noten', 'stundenplan', 'saving'];
+const PHASE_LABELS = {
+  starting:    'Initialisiere…',
+  browser:     'Browser starten…',
+  login:       'Anmelden…',
+  noten:       'Noten laden…',
+  stundenplan: 'Stundenplan laden…',
+  saving:      'Speichern…'
+};
+const PHASE_PILL_LABELS = {
+  starting:    'startet…',
+  browser:     'Browser…',
+  login:       'Login…',
+  noten:       'Noten…',
+  stundenplan: 'Stundenplan…',
+  saving:      'Speichern…'
+};
+
+let progressTimerHandle = null;
+
 function renderStatus(status) {
   state.status = status;
   const pill = $('#statusPill');
@@ -190,22 +210,25 @@ function renderStatus(status) {
 
   if (status && status.running) {
     pill.classList.add('pill--running');
-    label.textContent = 'läuft...';
+    label.textContent = PHASE_PILL_LABELS[status.currentPhase] || 'läuft…';
     btn.classList.add('is-loading');
     btn.disabled = true;
     state.scraping = true;
+    showProgress(status);
   } else if (status && status.lastError) {
     pill.classList.add('pill--error');
     label.textContent = 'Fehler';
     btn.classList.remove('is-loading');
     btn.disabled = false;
     state.scraping = false;
+    hideProgress();
   } else {
     pill.classList.add('pill--idle');
     label.textContent = 'bereit';
     btn.classList.remove('is-loading');
     btn.disabled = false;
     state.scraping = false;
+    hideProgress();
   }
 
   if (status && status.lastRun) {
@@ -215,6 +238,76 @@ function renderStatus(status) {
     lastRun.textContent = 'noch kein Lauf';
     lastRun.title = '';
   }
+}
+
+function showProgress(status) {
+  const bar = $('#progressBar');
+  if (!bar) return;
+  bar.hidden = false;
+
+  const phase = status.currentPhase || 'starting';
+  const caption = $('#progressPhaseLabel');
+  if (caption) caption.textContent = PHASE_LABELS[phase] || 'Läuft…';
+
+  // Schritte markieren
+  const activeIndex = PHASE_ORDER.indexOf(phase);
+  const steps = document.querySelectorAll('.progress__step');
+  steps.forEach((step, i) => {
+    step.classList.remove('is-active', 'is-done');
+    if (activeIndex < 0) return;
+    if (i < activeIndex) step.classList.add('is-done');
+    else if (i === activeIndex) step.classList.add('is-active');
+  });
+
+  // Fortschritts-Bar
+  const fill = $('#progressFill');
+  if (fill) {
+    const total = PHASE_ORDER.length;
+    // activeIndex = -1 (starting) → 5%, sonst (idx+0.5) / total
+    const pct = activeIndex < 0
+      ? 5
+      : Math.min(100, Math.round(((activeIndex + 0.5) / total) * 100));
+    fill.style.width = pct + '%';
+  }
+
+  // Timer startet (oder läuft weiter)
+  if (!progressTimerHandle && status.phaseStartedAt) {
+    startProgressTimer(status.phaseStartedAt);
+  } else if (status.phaseStartedAt) {
+    updateProgressTimer(status.phaseStartedAt);
+  }
+}
+
+function hideProgress() {
+  const bar = $('#progressBar');
+  if (bar) bar.hidden = true;
+  if (progressTimerHandle) {
+    clearInterval(progressTimerHandle);
+    progressTimerHandle = null;
+  }
+  const timer = $('#progressTimer');
+  if (timer) timer.textContent = '0:00';
+  const fill = $('#progressFill');
+  if (fill) fill.style.width = '0%';
+}
+
+function startProgressTimer(isoStart) {
+  updateProgressTimer(isoStart);
+  progressTimerHandle = setInterval(() => {
+    const current = state.status && state.status.phaseStartedAt;
+    if (current) updateProgressTimer(current);
+  }, 1000);
+}
+
+function updateProgressTimer(isoStart) {
+  const el = $('#progressTimer');
+  if (!el) return;
+  const ms = Date.now() - new Date(isoStart).getTime();
+  if (!isFinite(ms) || ms < 0) { el.textContent = '0:00'; return; }
+  const s = Math.floor(ms / 1000);
+  const mm = Math.floor(s / 60);
+  const ss = s % 60;
+  el.textContent = `${mm}:${String(ss).padStart(2, '0')}`;
 }
 
 // ---------- Noten tab ----------
@@ -296,7 +389,6 @@ function renderNotenTable() {
       h('td', {},
         h('div', { class: 'fach-cell' },
           h('div', { class: 'fach-cell__name' }, ...nameChildren),
-          (r.fach_code || r.kuerzel_code) && h('div', { class: 'fach-cell__code' }, r.fach_code || r.kuerzel_code),
         )
       ),
       h('td', {}, r.semester ? h('span', { class: `sem-badge sem-badge--${String(r.semester).toLowerCase()}` }, r.semester) : h('span', { class: 'fach-cell__code' }, '-')),
