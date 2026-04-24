@@ -1,89 +1,264 @@
+﻿<div align="center">
+
 # tocco-mate
 
-Inoffizieller Scraper für das WISS Tocco-Schulportal. Holt automatisch Noten & Stundenplan per Microsoft SSO, speichert sie lokal und zeigt sie in einem modernen Web-UI.
+**Ein inoffizieller Scraper für das WISS Tocco-Schulportal.**
 
-## Features
+Holt automatisch Noten und Stundenplan via Microsoft SSO, speichert alles lokal
+und stellt deine Daten in einem modernen Web-Dashboard bereit.
 
-- Noten-Dashboard mit Durchschnittsberechnung (gesamt + pro Semester)
-- Stundenplan-Übersicht mit Datum-/Limit-Filterung
-- Automatischer Scheduler (Intervall-Modus oder Wochenplan)
-- Telegram-Bot mit Push-Notifications bei Notenänderungen und Scrape-Fehlern
-- SQLite-Historie — alle Notenänderungen werden nachverfolgt
-- Live-Log-Stream via Server-Sent Events (SSE)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io-2496ED?logo=docker&logoColor=white)](https://github.com/JoKerIsCraZy/tocco-mate/pkgs/container/tocco-mate)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)](package.json)
+[![Playwright](https://img.shields.io/badge/playwright-1.59-45ba4b?logo=playwright&logoColor=white)](https://playwright.dev)
+
+</div>
 
 ---
 
-## Quick Start — Docker (empfohlen)
+## Überblick
+
+`tocco-mate` automatisiert den manuellen Login ins WISS Tocco-Portal und liefert
+dir deine Schuldaten strukturiert zurück. Statt dich mehrmals pro Woche selbst
+einzuloggen, läuft der Scraper im Hintergrund und benachrichtigt dich bei Bedarf
+direkt per Telegram.
+
+### Kernfunktionen
+
+| Bereich | Beschreibung |
+|---|---|
+| **Noten-Dashboard** | Durchschnittsberechnung (gesamt und pro Semester), sortier- und filterbar |
+| **Stundenplan** | Übersicht kommender Termine mit Datums- und Limit-Filter |
+| **Scheduler** | Intervall-Modus oder konfigurierbarer Wochenplan, UI-steuerbar |
+| **Telegram-Bot** | Push-Notifications bei Notenänderungen und Scrape-Fehlern |
+| **SQLite-Historie** | Lückenlose Nachverfolgung aller Notenänderungen |
+| **Live-Logs** | Echtzeit-Log-Stream im Dashboard via Server-Sent Events |
+
+---
+
+## Quick Start mit Docker
+
+Der einfachste Weg. Wähle den Einzeiler passend zu deinem System und ersetze
+die beiden markierten Platzhalter mit deinen Zugangsdaten.
+
+> **Pflichtfelder:** `MS_EMAIL`, `MS_PASSWORD`
+> **Optional:** `API_TOKEN` — wenn nicht gesetzt, wird beim ersten Start
+> automatisch ein sicherer Token generiert.
+
+### Linux / macOS / Git Bash / WSL
 
 ```bash
-git clone <repo>
-cd tocco-mate
-cp .env.example .env
-# .env öffnen und MS_EMAIL + MS_PASSWORD eintragen
-docker compose up -d
-docker compose logs -f tocco-mate   # API_TOKEN aus dem Log kopieren
+docker run -d --name tocco-mate --restart unless-stopped -p 3000:3000 \
+  -e MS_EMAIL="dein.name@wiss-edu.ch" \
+  -e MS_PASSWORD="DEIN_PASSWORT" \
+  -e ALLOW_UI_CREDENTIALS=false \
+  -v "$(pwd)/data:/app/data" \
+  ghcr.io/jokeriscrazy/tocco-mate:latest
 ```
 
-Dann im Browser `http://localhost:3000` öffnen und den kopierten Token eingeben.
+### Windows PowerShell
 
-**API_TOKEN:** Wird beim ersten Start automatisch generiert und in `data/.api-token` gespeichert. Er erscheint einmalig im Container-Log. Wer einen eigenen Token setzen möchte, trägt `API_TOKEN=...` in `.env` ein — dann wird die automatische Generierung übersprungen.
+```powershell
+docker run -d --name tocco-mate --restart unless-stopped -p 3000:3000 `
+  -e MS_EMAIL="dein.name@wiss-edu.ch" `
+  -e MS_PASSWORD="DEIN_PASSWORT" `
+  -e ALLOW_UI_CREDENTIALS=false `
+  -v "${PWD}/data:/app/data" `
+  ghcr.io/jokeriscrazy/tocco-mate:latest
+```
+
+### Windows CMD
+
+```cmd
+docker run -d --name tocco-mate --restart unless-stopped -p 3000:3000 ^
+  -e MS_EMAIL="dein.name@wiss-edu.ch" ^
+  -e MS_PASSWORD="DEIN_PASSWORT" ^
+  -e ALLOW_UI_CREDENTIALS=false ^
+  -v "%cd%/data:/app/data" ^
+  ghcr.io/jokeriscrazy/tocco-mate:latest
+```
+
+### Nach dem Start
+
+1. **API-Token aus den Logs auslesen**
+
+   ```bash
+   docker logs tocco-mate | grep AUTO-GENERATED
+   ```
+
+2. **Dashboard öffnen**: [http://localhost:3000](http://localhost:3000) und mit dem Token einloggen.
+
+3. **Optional weitere Features aktivieren** (beim `docker run` ergänzen):
+
+   ```bash
+   # Telegram-Bot
+   -e TELEGRAM_ENABLED=true \
+   -e TELEGRAM_TOKEN="1234567890:AAAA-BBBBCCCC_DDDDEEEEE" \
+   -e TELEGRAM_ALLOWED_USER_ID="123456789"
+
+   # Fixen API-Token setzen (statt Auto-Generierung)
+   -e API_TOKEN="mindestens_32_zufaellige_zeichen_hier"
+   ```
+
+### Alternative: Docker Compose
+
+```bash
+git clone https://github.com/JoKerIsCraZy/tocco-mate.git
+cd tocco-mate
+cp .env.example .env              # MS_EMAIL und MS_PASSWORD eintragen
+docker compose up -d
+docker compose logs -f tocco-mate
+```
 
 ---
 
-## Quick Start — ohne Docker (lokal)
+## Lokale Installation (ohne Docker)
+
+Für Entwicklung oder wenn kein Docker verfügbar ist.
 
 ```bash
+git clone https://github.com/JoKerIsCraZy/tocco-mate.git
+cd tocco-mate
 npm install
-npm run setup                 # Playwright Chromium herunterladen
-cp .env.example .env          # Werte eintragen
-npm run serve                 # HTTP-Server auf :3000
-# oder einmaliger Scrape via CLI:
+npm run setup                     # Playwright Chromium
+cp .env.example .env              # Werte eintragen
+npm run serve                     # Dashboard auf Port 3000
+```
+
+**Einmaliger Scrape ohne Server:**
+
+```bash
 npm start
 ```
+
+**Voraussetzungen:** Node.js >= 20, ausreichend Speicher für Chromium
+(ca. 300 MB), ein WISS-Schulaccount.
 
 ---
 
 ## Konfiguration
 
-Alle Einstellungen werden über `.env` gesetzt. Variablen ohne Default sind optional, sofern nicht als Pflicht markiert.
+Alle Einstellungen werden über Umgebungsvariablen gesetzt (`.env`-Datei oder
+Docker `-e`). Pflichtwerte sind explizit markiert.
+
+### Authentifizierung
 
 | Variable | Typ | Default | Beschreibung |
 |---|---|---|---|
-| `API_TOKEN` | string | _(auto)_ | Token für alle `/api/*`-Routen und das Web-UI. Wird automatisch generiert wenn leer. |
-| `ALLOW_UI_CREDENTIALS` | bool | `false` | Erlaubt das Ändern von `msPassword` und `telegramToken` über das Web-UI. Schreibt Secrets in `data/settings.json`. |
-| `MS_EMAIL` | string | — | **Pflicht.** Microsoft-Konto-E-Mail (`name@wiss-edu.ch`). |
-| `MS_PASSWORD` | string | — | **Pflicht.** Passwort für das Microsoft-Konto. |
-| `TOCCO_BASE` | string | `https://wiss.tocco.ch` | Basis-URL des Tocco-Portals. Nur via `.env` änderbar (SSRF-Schutz). |
-| `NOTEN_URL` | string | _(Tocco-Notenseite)_ | Vollständige URL der Notenseite. Nur via `.env`. |
-| `STUNDENPLAN_URL` | string | _(Tocco-Stundenplanseite)_ | Vollständige URL der Stundenplanseite. Nur via `.env`. |
-| `USER_PK` | string | _(leer)_ | Tocco-Benutzer-ID (optional). Nur via `.env`. |
-| `PORT` | number | `3000` | HTTP-Port des Express-Servers. |
-| `HEADLESS` | bool | `true` | Playwright headless betreiben. `false` = Browser sichtbar (Debug). |
-| `SLOW_MO` | number | `0` | Millisekunden zwischen Playwright-Aktionen (Debug). |
-| `DEBUG_SCRAPER` | bool | `false` | Aktiviert ausführliche DOM-Dumps bei Scraper-Fehlern. |
-| `TELEGRAM_ENABLED` | bool | `false` | Telegram-Bot aktivieren. |
-| `TELEGRAM_TOKEN` | string | — | Bot-Token von @BotFather. |
-| `TELEGRAM_ALLOWED_USER_ID` | number | — | Numerische Telegram-User-ID — nur diese darf den Bot verwenden. |
+| `MS_EMAIL` | string | — | **Pflicht.** Microsoft-E-Mail (`name@wiss-edu.ch`) |
+| `MS_PASSWORD` | string | — | **Pflicht.** Microsoft-Passwort |
+| `API_TOKEN` | string | *auto* | Schutz aller `/api/*`-Routen. Wird bei leerem Wert automatisch generiert |
+| `ALLOW_UI_CREDENTIALS` | bool | `false` | Credentials über das Web-UI änderbar (speichert in `settings.json`) |
 
-Einstellungen, die über das Web-UI änderbar sind (Scheduler-Modus, Intervall, Zeitfenster usw.), werden in `data/settings.json` gespeichert und überschreiben `.env`-Werte.
+### Tocco-URLs (SSRF-Schutz: nur via ENV setzbar)
+
+| Variable | Default |
+|---|---|
+| `TOCCO_BASE` | `https://wiss.tocco.ch` |
+| `NOTEN_URL` | *Notenseite* |
+| `STUNDENPLAN_URL` | *Stundenplanseite* |
+| `USER_PK` | *(leer)* |
+
+### Server und Browser
+
+| Variable | Typ | Default | Beschreibung |
+|---|---|---|---|
+| `PORT` | number | `3000` | HTTP-Port des internen Express-Servers |
+| `HEADLESS` | bool | `true` | `false` = sichtbarer Browser (Debug) |
+| `SLOW_MO` | number | `0` | Millisekunden zwischen Playwright-Aktionen (Debug) |
+| `DEBUG_SCRAPER` | bool | `false` | Aktiviert DOM-Dumps bei Scraper-Fehlern |
+
+### Telegram (optional)
+
+| Variable | Typ | Default | Beschreibung |
+|---|---|---|---|
+| `TELEGRAM_ENABLED` | bool | `false` | Telegram-Bot einschalten |
+| `TELEGRAM_TOKEN` | string | — | Bot-Token von [@BotFather](https://t.me/BotFather) |
+| `TELEGRAM_ALLOWED_USER_ID` | number | — | Numerische User-ID (Bot-Zugang) |
+
+> Scheduler-Einstellungen aus dem Web-UI überschreiben die `.env`-Werte
+> und werden in `data/settings.json` persistiert.
 
 ---
 
 ## Sicherheit
 
-**API_TOKEN**
-Alle `/api/*`-Routen und das Web-UI sind hinter dem API_TOKEN gesichert. Bei Verlust: entweder `API_TOKEN=neuer-wert` in `.env` eintragen oder `data/.api-token` löschen und den Container/Server neu starten — ein neuer Token wird dann generiert und im Log ausgegeben.
+**API-Token**
+Alle API-Routen (außer `/healthz`) erfordern den `API_TOKEN` entweder als
+`Authorization: Bearer <token>`-Header oder als `?token=<token>`-Query-Parameter.
+Bei Verlust: `API_TOKEN` in der Config neu setzen oder `data/.api-token` löschen
+und den Dienst neu starten.
 
 **Netzwerk**
-Das Standard-Port-Mapping im Compose-File ist `3000:3000` (LAN-offen). Wer den Dienst nur lokal erreichbar machen möchte, ändert das Mapping in `docker-compose.yml` auf `127.0.0.1:3000:3000`.
+Das Standard-Port-Mapping `3000:3000` bindet auf alle Interfaces. Setze es auf
+`127.0.0.1:3000:3000`, wenn der Dienst nur lokal erreichbar sein soll. Für
+öffentliche Exposition ist ein Reverse-Proxy mit TLS (Caddy, Traefik, nginx)
+zwingend erforderlich.
 
-Nicht ohne Reverse-Proxy + TLS ins öffentliche Internet exponieren. Empfohlen: Caddy, Traefik oder nginx mit TLS davorschalten.
+**Persistente Daten**
+Das `data/`-Verzeichnis enthält `storage.json` mit aktiven Session-Cookies und
+optional `settings.json` mit Credentials bei aktivem `ALLOW_UI_CREDENTIALS=true`.
+Diese Dateien niemals veröffentlichen.
 
-**ALLOW_UI_CREDENTIALS**
-Wenn `ALLOW_UI_CREDENTIALS=true` gesetzt ist, werden `msPassword` und `telegramToken` in `data/settings.json` im Klartext gespeichert (Dateimodus 0600). Nur auf eigenen, nicht gemeinsam genutzten Maschinen aktivieren.
+**Was `ALLOW_UI_CREDENTIALS` macht**
+Ist der Flag auf `false` (Default), dürfen `MS_PASSWORD` und `TELEGRAM_TOKEN`
+ausschliesslich über Umgebungsvariablen gesetzt werden. Das Web-UI zeigt diese
+Felder als schreibgeschützt an. Bei `true` kannst du sie direkt im Browser
+ändern; die Werte landen dann allerdings im Klartext in `data/settings.json`
+auf der Platte. Empfehlung: in Produktion auf `false` lassen.
 
-**data/**
-Das Verzeichnis enthält `storage.json` mit aktiven Browser-Cookies (Live-Login). Nie in Git committen (ist bereits in `.gitignore`), nie teilen.
+---
+
+## API
+
+Alle Endpoints erwarten den API-Token (außer `/healthz`).
+
+| Methode | Pfad | Beschreibung |
+|---|---|---|
+| `GET` | `/healthz` | Health-Check (ohne Auth) |
+| `GET` | `/api/status` | Scheduler-Status und Server-Zeit |
+| `GET` | `/api/settings` | Konfiguration abrufen (Passwort maskiert) |
+| `PATCH` | `/api/settings` | Einstellungen aktualisieren |
+| `GET` | `/api/noten` | Noten abrufen (`?semester=S1&sortBy=note`) |
+| `GET` | `/api/stundenplan` | Kommende Events (`?limit=100&from=YYYY-MM-DD`) |
+| `GET` | `/api/history/:kuerzelId` | Historie eines Fachs |
+| `GET` | `/api/stats` | Gesamt-Statistiken |
+| `POST` | `/api/scrape` | Manuellen Scrape auslösen |
+| `GET` | `/api/logs` | Letzte Log-Zeilen (`?limit=200`) |
+| `GET` | `/api/events` | SSE-Stream für Status- und Log-Updates |
+
+**Beispiel:**
+
+```bash
+curl -H "Authorization: Bearer $API_TOKEN" http://localhost:3000/api/noten
+```
+
+---
+
+## Telegram-Bot
+
+1. Bot bei [@BotFather](https://t.me/BotFather) erstellen und Token notieren.
+2. Eigene User-ID bei [@userinfobot](https://t.me/userinfobot) auslesen.
+3. Werte setzen und Dienst neu starten:
+
+   ```bash
+   TELEGRAM_ENABLED=true
+   TELEGRAM_TOKEN=...
+   TELEGRAM_ALLOWED_USER_ID=...
+   ```
+
+### Verfügbare Befehle
+
+| Befehl | Funktion |
+|---|---|
+| `/noten` | Aktuelle Notenübersicht |
+| `/durchschnitt` | Durchschnitt gesamt und pro Semester |
+| `/heute` | Stundenplan heute |
+| `/morgen` | Stundenplan morgen |
+| `/woche` | Kommende 7 Tage |
+| `/scrape` | Manuellen Scrape auslösen |
+| `/status` | Scheduler- und Dienststatus |
+| `/help` | Befehlsübersicht |
 
 ---
 
@@ -92,92 +267,65 @@ Das Verzeichnis enthält `storage.json` mit aktiven Browser-Cookies (Live-Login)
 ```
 tocco-mate/
 ├── src/
-│   ├── server.js       # Express-API, Scheduler, SSE-Stream
-│   ├── scraper.js      # Playwright-Login, Noten- und Stundenplan-Scraping
-│   ├── db.js           # SQLite via node:sqlite (experimental), parametrisierte Queries
-│   ├── bot.js          # Telegram-Bot (Long-Polling)
-│   └── settings.js     # Konfigurations-Merge: Defaults < .env < data/settings.json
-├── web/                # Vanilla-JS-Frontend (kein Build-Schritt)
-├── data/               # Runtime-Daten — gitignored
+│   ├── server.js       Express-API, Scheduler, SSE-Stream
+│   ├── scraper.js      Playwright-Login und Scraping-Logik
+│   ├── db.js           SQLite-Anbindung für Noten-Historie
+│   ├── bot.js          Telegram-Bot (Long-Polling)
+│   └── settings.js     Konfigurations-Management
+├── web/                Vanilla-JS-Frontend (kein Build-Schritt)
+├── data/               Runtime-Daten (Docker-Volume)
 ├── Dockerfile
-├── docker-compose.yml
-└── .env.example
+└── docker-compose.yml
 ```
 
----
-
-## API-Endpoints
-
-Alle Endpoints ausser `/healthz` erwarten den API_TOKEN im `Authorization`-Header (`Bearer <token>`) oder — bei SSE — als Query-Parameter `?token=<token>`.
-
-| Methode | Pfad | Beschreibung | Auth |
-|---|---|---|---|
-| `GET` | `/healthz` | Health-Check | Nein |
-| `GET` | `/api/status` | Scheduler-Status, Server-Zeit | Ja |
-| `GET` | `/api/settings` | Aktuelle Einstellungen (Passwort maskiert) | Ja |
-| `PATCH` | `/api/settings` | Einstellungen aktualisieren | Ja |
-| `GET` | `/api/noten` | Noten + Durchschnitt (`?semester=S1&sortBy=note&hasNote=true`) | Ja |
-| `GET` | `/api/stundenplan` | Kommende Events (`?limit=100&from=YYYY-MM-DD`) | Ja |
-| `GET` | `/api/history/:kuerzelId` | Noten-Verlauf für ein Fach | Ja |
-| `GET` | `/api/stats` | Gesamt-Statistiken | Ja |
-| `POST` | `/api/scrape` | Scrape sofort auslösen | Ja |
-| `GET` | `/api/logs` | Ringbuffer der letzten Log-Zeilen (`?limit=200`) | Ja |
-| `GET` | `/api/events` | SSE: `status`, `log`, `scrape_done` | Ja (Query) |
-
----
-
-## Telegram-Bot (optional)
-
-1. Bot erstellen: In Telegram an **@BotFather** schreiben → `/newbot` → Token notieren.
-2. Eigene User-ID holen: An **@userinfobot** schreiben → numerische ID notieren.
-3. In `.env` eintragen:
-   ```
-   TELEGRAM_ENABLED=true
-   TELEGRAM_TOKEN=1234567890:AAAA-BBBBCCCC_DDDDEEEEE
-   TELEGRAM_ALLOWED_USER_ID=123456789
-   ```
-4. Server neu starten — Bot startet automatisch.
-
-Verfügbare Befehle: `/noten`, `/durchschnitt`, `/heute`, `/morgen`, `/woche`, `/scrape`, `/status`, `/help`.
-
-Push-Notifications werden automatisch gesendet bei neuen oder geänderten Noten sowie bei Scrape-Fehlern.
+**Stack:** Node.js 20, Express 5, Playwright 1.59 (Chromium), SQLite (nativ),
+Vanilla-JS-Frontend ohne Build-Pipeline.
 
 ---
 
 ## Troubleshooting
 
-| Problem | Ursache / Lösung |
+| Symptom | Lösung |
 |---|---|
-| Login schlägt fehl | Passwort abgelaufen, MFA aktiv oder E-Mail falsch. `HEADLESS=false` setzen, um den Browser sichtbar zu machen. |
-| `login-error.png` erscheint | Screenshot vom Fehlermoment — Inhalt prüfen für weiteren Kontext. |
-| Session ungültig | `data/storage.json` löschen → Session wird neu aufgebaut. |
-| Daten werden nicht aktualisiert | Scheduler ausgeschaltet (`autoRun=false`) oder ausserhalb des Zeitfensters. `/api/scrape` manuell aufrufen. |
-| Port bereits belegt | `PORT=3001` in `.env` eintragen. |
-| Playwright-Fehler in Docker | Container-Healthcheck-Log prüfen; Chromium-Abhängigkeiten fehlen selten, da das `Dockerfile` darauf ausgelegt ist. |
+| Login schlägt fehl | Passwort abgelaufen, MFA aktiv oder falsche E-Mail. Setze `HEADLESS=false` für visuelles Debugging. |
+| `login-error.png` wird angelegt | Bilddatei im `data/`-Verzeichnis prüfen — sie zeigt die Seite zum Zeitpunkt des Fehlers. |
+| Session ungültig | `data/storage.json` löschen, damit beim nächsten Scrape ein frischer Login erzwungen wird. |
+| Keine Updates | Scheduler-Status (`autoRun`) im Dashboard prüfen oder manuell via `POST /api/scrape` auslösen. |
+| Token vergessen | `data/.api-token` löschen und Dienst neu starten — ein neuer Token wird generiert und geloggt. |
 
 ---
-
-## Lizenz
-
-MIT — siehe [LICENSE](LICENSE).
 
 ## Mitwirken
 
-Beiträge sind willkommen — siehe [CONTRIBUTING.md](CONTRIBUTING.md).
+Beiträge sind willkommen. Siehe [CONTRIBUTING.md](CONTRIBUTING.md) für
+Richtlinien zu Issues, Pull Requests und Entwicklungssetup.
+
+## Lizenz
+
+Veröffentlicht unter der [MIT-Lizenz](LICENSE).
+
+## Disclaimer
+
+`tocco-mate` ist ein inoffizielles Hobby-Projekt und steht in keinerlei
+Verbindung zur WISS oder zur Tocco AG. Die Nutzung erfolgt auf eigene
+Verantwortung. Bitte respektiere die Terms of Service deiner Schule.
 
 ---
 
-## English Summary
+<div align="center">
 
-**tocco-mate** is an unofficial scraper for the WISS Tocco school portal (Switzerland). It logs in automatically via Microsoft SSO, fetches grades and timetable data, stores everything in a local SQLite database, and serves a web dashboard on port 3000.
+**English?**
+`tocco-mate` is an unofficial scraper for the WISS Tocco portal. It fetches
+grades and timetables via Microsoft SSO, stores them locally in SQLite, and
+serves a web dashboard. Quick start:
 
-**Docker quick-start:**
 ```bash
-cp .env.example .env   # add MS_EMAIL + MS_PASSWORD
-docker compose up -d
-# open http://localhost:3000 — use the API_TOKEN printed in the logs
+docker run -d --name tocco-mate -p 3000:3000 \
+  -e MS_EMAIL="..." -e MS_PASSWORD="..." \
+  ghcr.io/jokeriscrazy/tocco-mate:latest
 ```
 
-All API endpoints are protected by an `API_TOKEN` (auto-generated on first start). Do not expose the service to the public internet without a reverse proxy and TLS. See the Sicherheit section above for details.
+The auto-generated `API_TOKEN` is printed on first start.
+Do not expose to the public internet without a reverse proxy and TLS.
 
-License: MIT.
+</div>
