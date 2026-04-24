@@ -527,7 +527,10 @@ app.use(helmet({
       objectSrc: ["'none'"],
       baseUri: ["'self'"]
     }
-  }
+  },
+  // HSTS deaktivieren — LAN/HTTP-Default ohne TLS würde sonst den Browser
+  // auf https: zwingen (ERR_SSL_PROTOCOL_ERROR). Reverse-Proxy setzt HSTS selbst.
+  strictTransportSecurity: false
 }));
 
 app.use(express.json({ limit: '32kb' }));
