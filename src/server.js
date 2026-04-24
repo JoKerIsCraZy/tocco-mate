@@ -525,7 +525,11 @@ app.use(helmet({
       connectSrc: ["'self'"],
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],
-      baseUri: ["'self'"]
+      baseUri: ["'self'"],
+      // Helmet Default aktiviert upgrade-insecure-requests — zwingt Browser
+      // alle http:// Subresources auf https: umzubiegen. Bei LAN/HTTP-Deployments
+      // bricht das CSS/JS mit ERR_SSL_PROTOCOL_ERROR. Entfernen via null.
+      upgradeInsecureRequests: null
     }
   },
   // HSTS deaktivieren — LAN/HTTP-Default ohne TLS würde sonst den Browser
