@@ -1,0 +1,20 @@
+# tocco-cli — Minimal-Setup
+# Nur die 3 Pflicht-Variablen. Rest hat sinnvolle Defaults.
+# Start: docker compose -f docker-compose.easy.yml up -d
+
+services:
+  tocco-cli:
+    image: tocco-cli:latest
+    build: .
+    container_name: tocco-cli
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      # Microsoft-Login
+      MS_EMAIL: "dein.name@wiss-edu.ch"
+      MS_PASSWORD: ""
+      # API-Token — leer lassen = auto-generiert (siehe docker logs)
+      API_TOKEN: ""

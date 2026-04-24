@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#0f1115" />
+  <title>Tocco CLI</title>
+  <link rel="stylesheet" href="./style.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%236ea8fe'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-family='sans-serif' font-size='34' font-weight='700' fill='%230f1115'%3ET%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+  <!-- LOGIN OVERLAY -->
+  <div id="loginOverlay" class="login-overlay" hidden>
+    <form id="loginForm" class="login-card" autocomplete="off">
+      <div class="login-card__brand">
+        <div class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13.5"/>
+            <path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H20"/>
+            <path d="M8 8h8M8 12h6"/>
+          </svg>
+        </div>
+        <h1>Tocco CLI</h1>
+      </div>
+      <p class="login-card__lead">Authentifizierung erforderlich</p>
+      <div class="field">
+        <label for="loginToken">API-Token</label>
+        <input id="loginToken" type="password" autocomplete="off" spellcheck="false" required />
+        <small class="field__hint">Wird in deinem Browser gespeichert (localStorage).</small>
+      </div>
+      <div class="login-card__status" id="loginStatus"></div>
+      <button class="btn btn--primary" type="submit">Anmelden</button>
+    </form>
+  </div>
+
+  <!-- HEADER -->
+  <header class="topbar" role="banner">
+    <div class="topbar__inner">
+      <div class="brand">
+        <div class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13.5"/>
+            <path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H20"/>
+            <path d="M8 8h8M8 12h6"/>
+          </svg>
+        </div>
+        <div class="brand__text">
+          <div class="brand__title">Tocco <span>CLI</span></div>
+          <div class="brand__subtitle">WISS Scraper</div>
+        </div>
+      </div>
+
+      <div class="topbar__status">
+        <div id="statusPill" class="pill pill--idle" title="Status">
+          <span class="pill__dot"></span>
+          <span class="pill__label">bereit</span>
+        </div>
+        <div class="lastrun" id="lastRunLabel" title="Letzter Lauf">–</div>
+      </div>
+
+      <div class="topbar__actions">
+        <button id="scrapeBtn" class="btn btn--primary" type="button">
+          <span class="btn__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="6 4 20 12 6 20 6 4"/>
+            </svg>
+          </span>
+          <span class="btn__label">Jetzt scrapen</span>
+        </button>
+        <button id="logoutBtn" class="btn btn--ghost" type="button" title="Abmelden">
+          <span class="btn__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </span>
+          <span class="btn__label">Abmelden</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- TABS -->
+  <nav class="tabs" role="tablist" aria-label="Bereiche">
+    <div class="tabs__inner">
+      <button class="tab" role="tab" data-tab="noten" aria-selected="true">
+        <span class="tab__glyph" aria-hidden="true">📚</span>
+        <span>Noten</span>
+      </button>
+      <button class="tab" role="tab" data-tab="stundenplan" aria-selected="false">
+        <span class="tab__glyph" aria-hidden="true">📅</span>
+        <span>Stundenplan</span>
+      </button>
+      <button class="tab" role="tab" data-tab="einstellungen" aria-selected="false">
+        <span class="tab__glyph" aria-hidden="true">⚙️</span>
+        <span>Einstellungen</span>
+      </button>
+      <span class="tab__indicator" aria-hidden="true"></span>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- NOTEN -->
+    <section class="panel" id="panel-noten" role="tabpanel" aria-labelledby="noten">
+      <div class="avg-grid" id="avgGrid">
+        <!-- average cards injected -->
+      </div>
+
+      <div class="card card--table">
+        <div class="card__head">
+          <div class="card__title-wrap">
+            <h2 class="card__title">Notenübersicht</h2>
+            <div class="card__subtitle" id="notenSubtitle">–</div>
+          </div>
+          <div class="toolbar">
+            <div class="search">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+              </svg>
+              <input id="notenSearch" type="search" placeholder="Fach suchen…" aria-label="Fach suchen" />
+            </div>
+            <div class="chips" id="notenChips" role="tablist" aria-label="Filter">
+              <button class="chip chip--active" data-filter="all">Alle</button>
+              <button class="chip" data-filter="withNote">Mit Note</button>
+              <button class="chip" data-filter="S1">S1</button>
+              <button class="chip" data-filter="S2">S2</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="tbl" id="notenTable">
+            <thead>
+              <tr>
+                <th data-sort="fach_name" class="tbl__sortable">Fach <span class="sort-arrow"></span></th>
+                <th data-sort="semester" class="tbl__sortable">Semester <span class="sort-arrow"></span></th>
+                <th data-sort="typ" class="tbl__sortable">Typ <span class="sort-arrow"></span></th>
+                <th data-sort="note" class="tbl__sortable tbl__right">Note <span class="sort-arrow"></span></th>
+              </tr>
+            </thead>
+            <tbody id="notenBody">
+              <tr><td colspan="4" class="tbl__empty">Lade Daten…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- STUNDENPLAN -->
+    <section class="panel" id="panel-stundenplan" role="tabpanel" hidden>
+      <div class="card">
+        <div class="card__head">
+          <div class="card__title-wrap">
+            <h2 class="card__title">Kommende Termine</h2>
+            <div class="card__subtitle" id="stundenplanSubtitle">–</div>
+          </div>
+        </div>
+        <div class="schedule" id="scheduleList">
+          <div class="empty">Lade Stundenplan…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- EINSTELLUNGEN -->
+    <section class="panel" id="panel-einstellungen" role="tabpanel" hidden>
+      <form class="card settings" id="settingsForm" autocomplete="off">
+        <div class="card__head">
+          <div class="card__title-wrap">
+            <h2 class="card__title">Einstellungen</h2>
+            <div class="card__subtitle">Anmeldung, Automatik und Browser</div>
+          </div>
+        </div>
+
+        <fieldset class="settings__group">
+          <legend>Anmeldung</legend>
+          <div class="field">
+            <label for="msEmail">Microsoft-E-Mail</label>
+            <input id="msEmail" name="msEmail" type="email" placeholder="name@wiss-edu.ch" />
+          </div>
+          <div class="field">
+            <label for="msPassword">Passwort</label>
+            <input id="msPassword" name="msPassword" type="password" placeholder="••• (unverändert)" autocomplete="new-password" />
+            <small class="field__hint">Leer lassen, um das gespeicherte Passwort zu behalten.</small>
+          </div>
+          <div class="field">
+            <label for="userPk">User-PK</label>
+            <input id="userPk" name="userPk" type="text" />
+            <small class="field__hint">Primärschlüssel des eingeloggten Benutzers in Tocco.</small>
+          </div>
+        </fieldset>
+
+        <fieldset class="settings__group">
+          <legend>Automatik</legend>
+          <div class="field field--row">
+            <label class="toggle">
+              <input id="autoRun" name="autoRun" type="checkbox" />
+              <span class="toggle__track"><span class="toggle__thumb"></span></span>
+              <span class="toggle__label">Auto-Run aktivieren</span>
+            </label>
+          </div>
+
+          <!-- Mode-Switcher -->
+          <div class="field">
+            <label>Modus</label>
+            <div class="mode-switch" role="radiogroup">
+              <label class="mode-switch__opt">
+                <input type="radio" name="scheduleMode" value="interval" />
+                <span>⏱️ Intervall</span>
+              </label>
+              <label class="mode-switch__opt">
+                <input type="radio" name="scheduleMode" value="weekly" />
+                <span>📅 Wochenplan</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Wochentage (beide Modi) -->
+          <div class="field">
+            <label>Wochentage</label>
+            <div id="scheduleDays" class="day-chips" role="group">
+              <button type="button" class="day-chip" data-day="1">Mo</button>
+              <button type="button" class="day-chip" data-day="2">Di</button>
+              <button type="button" class="day-chip" data-day="3">Mi</button>
+              <button type="button" class="day-chip" data-day="4">Do</button>
+              <button type="button" class="day-chip" data-day="5">Fr</button>
+              <button type="button" class="day-chip" data-day="6">Sa</button>
+              <button type="button" class="day-chip" data-day="0">So</button>
+            </div>
+          </div>
+
+          <!-- Intervall-Mode -->
+          <div class="field" data-mode-panel="interval">
+            <label for="intervalMinutes">Intervall: <span id="intervalValue" class="mono">–</span> Min.</label>
+            <input id="intervalMinutes" name="intervalMinutes" type="range" min="5" max="1440" step="5" />
+            <div class="range-scale"><span>5</span><span>360</span><span>720</span><span>1440</span></div>
+          </div>
+          <div class="field" data-mode-panel="interval">
+            <label>Zeitfenster</label>
+            <div class="time-range">
+              <input id="intervalTimeFrom" type="time" class="time-input" />
+              <span class="time-range__sep">bis</span>
+              <input id="intervalTimeTo" type="time" class="time-input" />
+            </div>
+          </div>
+
+          <!-- Weekly-Mode -->
+          <div class="field" data-mode-panel="weekly">
+            <label>Uhrzeiten</label>
+            <div id="scheduleTimes" class="time-list"></div>
+            <button type="button" id="addTimeBtn" class="btn btn--ghost btn--sm">+ Zeit hinzufügen</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="settings__group">
+          <legend>Browser</legend>
+          <div class="field field--row">
+            <label class="toggle">
+              <input id="headless" name="headless" type="checkbox" />
+              <span class="toggle__track"><span class="toggle__thumb"></span></span>
+              <span class="toggle__label">Headless ausführen</span>
+            </label>
+          </div>
+          <div class="field">
+            <label for="slowMo">slowMo (ms)</label>
+            <input id="slowMo" name="slowMo" type="number" min="0" max="5000" step="50" />
+          </div>
+        </fieldset>
+
+        <fieldset class="settings__group">
+          <legend>Telegram-Bot</legend>
+          <div class="field field--row">
+            <label class="toggle">
+              <input id="telegramEnabled" name="telegramEnabled" type="checkbox" />
+              <span class="toggle__track"><span class="toggle__thumb"></span></span>
+              <span class="toggle__label">Bot aktivieren</span>
+            </label>
+          </div>
+          <div class="field">
+            <label for="telegramToken">Bot-Token <span class="field__hint">von @BotFather</span></label>
+            <input id="telegramToken" name="telegramToken" type="password" placeholder="••• (unverändert)" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="telegramAllowedUserId">Deine User-ID <span class="field__hint">von @userinfobot</span></label>
+            <input id="telegramAllowedUserId" name="telegramAllowedUserId" type="number" min="1" placeholder="123456789" />
+          </div>
+          <p class="field__help">
+            1. In Telegram <b>@BotFather</b> anschreiben → <code>/newbot</code> → Token.<br>
+            2. An <b>@userinfobot</b> schreiben → deine User-ID.<br>
+            3. Werte oben eintragen, Bot aktivieren, speichern.
+          </p>
+        </fieldset>
+
+        <details class="settings__group settings__advanced">
+          <summary>Erweitert – URLs</summary>
+          <div class="field">
+            <label for="baseUrl">Base-URL</label>
+            <input id="baseUrl" name="baseUrl" type="url" />
+          </div>
+          <div class="field">
+            <label for="notenUrl">Noten-URL</label>
+            <input id="notenUrl" name="notenUrl" type="url" />
+          </div>
+          <div class="field">
+            <label for="stundenplanUrl">Stundenplan-URL</label>
+            <input id="stundenplanUrl" name="stundenplanUrl" type="url" />
+          </div>
+        </details>
+
+        <div class="settings__actions">
+          <div class="settings__status" id="settingsStatus"></div>
+          <button class="btn btn--primary" type="submit">Speichern</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <!-- LOG DRAWER -->
+  <aside class="drawer" id="drawer" aria-label="Live-Log">
+    <button class="drawer__toggle" id="drawerToggle" aria-expanded="false" aria-controls="drawerBody">
+      <span class="drawer__title">
+        <span class="drawer__led" aria-hidden="true"></span>
+        Live-Log
+        <span class="drawer__count" id="drawerCount">0</span>
+      </span>
+      <span class="drawer__chev" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m6 15 6-6 6 6"/>
+        </svg>
+      </span>
+    </button>
+    <div class="drawer__body" id="drawerBody" hidden>
+      <div class="drawer__log" id="logList"></div>
+    </div>
+  </aside>
+
+  <!-- MODAL: history -->
+  <div class="modal" id="historyModal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
+    <div class="modal__backdrop" data-modal-close></div>
+    <div class="modal__panel">
+      <header class="modal__head">
+        <h3 id="historyTitle">Notenverlauf</h3>
+        <button class="modal__close" data-modal-close aria-label="Schliessen">×</button>
+      </header>
+      <div class="modal__body" id="historyBody">
+        <div class="empty">Lade Verlauf…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOASTS -->
+  <div class="toasts" id="toasts" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>

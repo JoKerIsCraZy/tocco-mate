@@ -1,0 +1,61 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Environment (secrets never in image)
+.env
+.env.local
+.env.*.local
+
+# Docker
+.dockerignore
+Dockerfile
+docker-compose.yml
+docker-compose.override.yml
+docker-compose.override.yml.example
+
+# Dependencies (installed in image)
+node_modules/
+npm-debug.log
+npm-debug.log.*
+yarn-error.log
+yarn-error.log.*
+.npm/
+
+# Runtime data (mounted as volume, not baked into image)
+data/
+data/*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation (not needed at runtime)
+*.md
+README.md
+CHANGELOG.md
+CONTRIBUTING.md
+
+# Tests (not needed at runtime)
+test/
+tests/
+__tests__/
+*.test.js
+*.spec.js
+.mocha
+.nyc_output
+coverage/
+
+# Build artifacts
+dist/
+build/
+*.tgz
+
+# OS
+Thumbs.db
+.DS_Store

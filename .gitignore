@@ -1,0 +1,36 @@
+# secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# runtime / generated
+data/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# logs / debug
+*.log
+*.png
+debug-*.png
+login-error.png
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# editors / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# build artifacts
+dist/
+build/
+.cache/

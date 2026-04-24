@@ -1,0 +1,38 @@
+# docker-compose.override.yml.example
+#
+# For local development, rename this to docker-compose.override.yml
+# This will be automatically loaded by `docker-compose up` and override values in docker-compose.yml
+# (see https://docs.docker.com/compose/how-tos/multiple-compose-files/managing-multiple-compose-files/)
+#
+# Usage:
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#   docker-compose up
+#
+# Note: Never commit docker-compose.override.yml to version control
+
+version: '3.9'
+
+services:
+  tocco-cli:
+    # Rebuild from dockerfile target=runtime on every up (for quick iteration)
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+
+    # Localhost-only in dev (prevent accidental LAN exposure)
+    ports:
+      - "127.0.0.1:3000:3000"
+
+    # Override env for development
+    environment:
+      - NODE_ENV=development
+      - HEADLESS=false           # Show browser during Playwright automation
+      - SLOW_MO=100              # Add 100ms delay between Playwright actions (easier to follow)
+      - DEBUG_SCRAPER=true       # Log full DOM on scraper errors
+      - DEBUG=tocco:*            # Enable debug logging if using debug module
+
+    # Mount src/ for hot reload (if you add nodemon to devDependencies)
+    # volumes:
+    #   - ./src:/app/src:ro
+    #   - ./data:/app/data
