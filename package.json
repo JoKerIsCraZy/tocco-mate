@@ -10,7 +10,7 @@
     "setup": "playwright install chromium"
   },
   "dependencies": {
-    "express": "^4.21.0",
+    "express": "^5.2.1",
     "express-rate-limit": "^7.4.0",
     "helmet": "^8.0.0",
     "playwright": "1.59.1"
