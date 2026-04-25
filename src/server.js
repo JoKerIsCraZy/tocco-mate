@@ -1008,7 +1008,12 @@ app.get('/api/noten/:kuerzelId/pruefungen', (req, res) => {
       modulNote: modulRow ? modulRow.note : null,
       modulNoteRaw: modulRow ? modulRow.note_raw : null,
       detailId: modulRow ? modulRow.detail_id : null,
-      fachName: modulRow ? modulRow.fach_name : null
+      fachName: modulRow ? modulRow.fach_name : null,
+      fachCode: modulRow ? modulRow.fach_code : null,
+      kuerzelCode: modulRow ? modulRow.kuerzel_code : null,
+      kuerzelFull: modulRow ? modulRow.kuerzel_full : null,
+      semester: modulRow ? modulRow.semester : null,
+      typ: modulRow ? modulRow.typ : null
     });
   } catch (e) {
     logger.log('DB error at GET /api/noten/:id/pruefungen: ' + (e && e.message ? e.message : e), 'error');
