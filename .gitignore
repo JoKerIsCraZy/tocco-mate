@@ -34,3 +34,7 @@ desktop.ini
 dist/
 build/
 .cache/
+
+# Android companion app (lokal, nicht im Repo)
+/toccomate/
+toccomate-release.jks
