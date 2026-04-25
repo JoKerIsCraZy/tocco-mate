@@ -12,6 +12,19 @@ set -euo pipefail
 PUID="${PUID:-1000}"
 PGID="${PGID:-1000}"
 TZ="${TZ:-Europe/Zurich}"
+export TZ
+
+# If the container was started with `--user` / `user:` (or otherwise as
+# non-root), we cannot remap the app user, chown the volume, or rewrite
+# /etc/localtime. Skip all root-only setup and just exec the command —
+# the operator has already chosen a UID, so they own the responsibility
+# for /app/data write access.
+if [[ "$(id -u)" -ne 0 ]]; then
+    echo "[entrypoint] non-root start (uid=$(id -u) gid=$(id -g)) — skipping PUID/PGID/TZ setup"
+    echo "[entrypoint] hint: remove any 'user:' override or use root in your container template"
+    echo "[entrypoint]       so the entrypoint can apply PUID/PGID and TZ for you"
+    exec "$@"
+fi
 
 # Apply timezone so logs + Telegram timestamps render in local time.
 if [[ -f "/usr/share/zoneinfo/$TZ" ]]; then
@@ -20,10 +33,10 @@ if [[ -f "/usr/share/zoneinfo/$TZ" ]]; then
 else
     echo "[entrypoint] WARN: unknown TZ '$TZ' — falling back to Europe/Zurich"
     TZ="Europe/Zurich"
+    export TZ
     ln -sf "/usr/share/zoneinfo/$TZ" /etc/localtime
     echo "$TZ" > /etc/timezone
 fi
-export TZ
 
 current_uid="$(id -u app)"
 current_gid="$(id -g app)"
