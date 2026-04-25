@@ -1,0 +1,20 @@
+# Trivy ignore list — every entry must include a justification + review date.
+# https://trivy.dev/latest/docs/configuration/filtering/
+
+# ---------------------------------------------------------------------------
+# DS-0002: "Last USER command in Dockerfile should not be 'root'"
+#
+# Justification:
+#   The container intentionally boots as root so docker/entrypoint.sh can
+#     1. apply ${PUID}/${PGID} to the in-container `app` user (LinuxServer.io
+#        pattern, required for bind-mount writes on Unraid/Synology/etc),
+#     2. chown the /app/data volume to that UID/GID,
+#     3. drop privileges to `app` via `gosu app "$@"` before exec'ing node.
+#   Static analysis cannot follow the runtime gosu drop, so Trivy flags the
+#   final USER directive even though the actual node process never runs as
+#   root. Equivalent finding is suppressed in linuxserver/* images.
+#
+# Reviewed: 2026-04-25 (PR #11)
+# ---------------------------------------------------------------------------
+AVD-DS-0002
+DS-0002

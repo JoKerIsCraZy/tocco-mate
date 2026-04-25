@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'Dockerfile'
+      - 'docker/**'
+      - '.trivyignore'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/trivy.yml'
@@ -12,6 +14,8 @@ on:
     branches: [main]
     paths:
       - 'Dockerfile'
+      - 'docker/**'
+      - '.trivyignore'
       - 'package.json'
       - 'package-lock.json'
   schedule:
@@ -39,6 +43,7 @@ jobs:
           output: 'trivy-config.sarif'
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
+          trivyignores: '.trivyignore'
 
       - name: Upload config SARIF to Security tab
         uses: github/codeql-action/upload-sarif@v4
@@ -74,6 +79,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
           exit-code: '0'
+          trivyignores: '.trivyignore'
 
       - name: Upload image SARIF to Security tab
         uses: github/codeql-action/upload-sarif@v4
