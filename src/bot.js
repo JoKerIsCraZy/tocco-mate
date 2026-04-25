@@ -416,11 +416,10 @@ async function screenModulDetail(kuerzelId) {
     return { text: '⚠️ Ungültige Modul-ID.', keyboard: simpleNav() };
   }
   const database = db.open();
-  let modul, pruefungen, stats;
+  let modul, pruefungen;
   try {
     modul = db.getNotenRow(database, kuerzelId);
     pruefungen = db.getPruefungen(database, kuerzelId);
-    stats = db.getStats(database);
   } finally { database.close(); }
 
   if (!modul) {
