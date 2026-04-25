@@ -45,6 +45,11 @@ die beiden markierten Platzhalter mit deinen Zugangsdaten.
 > **Optional:** `API_TOKEN` — wenn nicht gesetzt, wird beim ersten Start
 > automatisch ein sicherer Token generiert.
 
+> **Hinweis NAS / Unraid:** wenn beim Start ein `EACCES: permission denied`
+> auf `/app/data/*` auftaucht, setze zusätzlich `-e PUID=…` und `-e PGID=…`
+> passend zu dem Host-User, der `./data` besitzt. Defaults: `1000`/`1000`.
+> Werte → siehe [Docker-Berechtigungen (PUID / PGID)](#docker-berechtigungen-puid--pgid).
+
 ### Linux / macOS / Git Bash / WSL
 
 ```bash
@@ -52,6 +57,7 @@ docker run -d --name tocco-mate --restart unless-stopped -p 3000:3000 \
   -e MS_EMAIL="dein.name@wiss-edu.ch" \
   -e MS_PASSWORD="DEIN_PASSWORT" \
   -e ALLOW_UI_CREDENTIALS=false \
+  -e PUID=$(id -u) -e PGID=$(id -g) \
   -v "$(pwd)/data:/app/data" \
   ghcr.io/jokeriscrazy/tocco-mate:latest
 ```
@@ -77,6 +83,9 @@ docker run -d --name tocco-mate --restart unless-stopped -p 3000:3000 ^
   -v "%cd%/data:/app/data" ^
   ghcr.io/jokeriscrazy/tocco-mate:latest
 ```
+
+> Auf Windows greifen `PUID`/`PGID` nicht — Docker Desktop bzw. WSL2
+> übersetzt das Bind-Mount automatisch.
 
 ### Nach dem Start
 
@@ -175,6 +184,37 @@ Docker `-e`). Pflichtwerte sind explizit markiert.
 | `TELEGRAM_ENABLED` | bool | `false` | Telegram-Bot einschalten |
 | `TELEGRAM_TOKEN` | string | — | Bot-Token von [@BotFather](https://t.me/BotFather) |
 | `TELEGRAM_ALLOWED_USER_ID` | number | — | Numerische User-ID (Bot-Zugang) |
+
+### Docker-Berechtigungen (PUID / PGID)
+
+Beim ersten Start chownt der Container das gemountete `./data`-Verzeichnis
+automatisch auf den Host-User. Setze `PUID` und `PGID` so, dass sie zu der
+User-/Group-ID passen, der dein `./data`-Verzeichnis auf dem Host gehört —
+das verhindert das typische `EACCES: permission denied`-Problem bei
+Bind-Mounts.
+
+| Variable | Typ | Default | Beschreibung |
+|---|---|---|---|
+| `PUID` | number | `1000` | User-ID, unter der `node` im Container läuft |
+| `PGID` | number | `1000` | Group-ID, unter der `node` im Container läuft |
+
+| Plattform | Typische Werte |
+|---|---|
+| Linux / macOS / WSL | `PUID=$(id -u)` `PGID=$(id -g)` (meist `1000`/`1000`) |
+| Unraid | `PUID=99` `PGID=100` |
+| Synology | `PUID=1026` `PGID=100` |
+| QNAP | `PUID=1000` `PGID=100` |
+
+### Zeitzone (TZ)
+
+Steuert die Anzeige von Zeitstempeln in Logs und Telegram-Status. Default
+ist UTC — willst du lokale Zeit (z.B. im Telegram-Status `dd.MM.yyyy HH:mm:ss`),
+setze die `TZ`-Variable auf eine
+[IANA-Zeitzone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
+
+| Variable | Default | Beispiele |
+|---|---|---|
+| `TZ` | `Etc/UTC` | `Europe/Zurich`, `Europe/Berlin`, `Europe/Vienna`, `America/New_York` |
 
 > Scheduler-Einstellungen aus dem Web-UI überschreiben die `.env`-Werte
 > und werden in `data/settings.json` persistiert.
