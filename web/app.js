@@ -179,22 +179,24 @@ function initTabs() {
 }
 
 // ---------- status pill ----------
-const PHASE_ORDER = ['browser', 'login', 'noten', 'stundenplan', 'saving'];
+const PHASE_ORDER = ['browser', 'login', 'noten', 'stundenplan', 'saving', 'noten_details'];
 const PHASE_LABELS = {
-  starting:    'Initialisiere…',
-  browser:     'Browser starten…',
-  login:       'Anmelden…',
-  noten:       'Noten laden…',
-  stundenplan: 'Stundenplan laden…',
-  saving:      'Speichern…'
+  starting:      'Initialisiere…',
+  browser:       'Browser starten…',
+  login:         'Anmelden…',
+  noten:         'Noten laden…',
+  stundenplan:   'Stundenplan laden…',
+  saving:        'Speichern…',
+  noten_details: 'Modul-Details laden…'
 };
 const PHASE_PILL_LABELS = {
-  starting:    'startet…',
-  browser:     'Browser…',
-  login:       'Login…',
-  noten:       'Noten…',
-  stundenplan: 'Stundenplan…',
-  saving:      'Speichern…'
+  starting:      'startet…',
+  browser:       'Browser…',
+  login:         'Login…',
+  noten:         'Noten…',
+  stundenplan:   'Stundenplan…',
+  saving:        'Speichern…',
+  noten_details: 'Details…'
 };
 
 let progressTimerHandle = null;
@@ -468,7 +470,133 @@ function initNotenTab() {
   });
 }
 
-// ---------- History modal ----------
+// ---------- Modul-Details modal (Prüfungen + History) ----------
+function pruefTypBadgeClass(typ) {
+  if (typ === 'ZP') return 'pruef-typ--zp';
+  if (typ === 'LB') return 'pruef-typ--lb';
+  return 'pruef-typ--other';
+}
+
+// Berechnet gewichteten Schnitt aus Pruefungen-Liste; null wenn nicht alle bewertet.
+function calcWeightedAvg(pruefungen) {
+  if (!pruefungen || !pruefungen.length) return null;
+  let sumW = 0, sumWN = 0, withWeight = 0;
+  for (const p of pruefungen) {
+    const n = Number(p.bewertung);
+    const w = Number(p.gewicht_pct);
+    if (!isFinite(n)) return null; // unvollständig → kein berechneter Schnitt
+    if (isFinite(w) && w > 0) { sumW += w; sumWN += n * w; withWeight++; }
+  }
+  if (!withWeight || sumW <= 0) return null;
+  // Wenn Gewichte nicht ~100% summieren → wir mitteln trotzdem nach Gewicht (sumWN/sumW)
+  return sumWN / sumW;
+}
+
+function renderPruefungenSection(data) {
+  const rows = (data && data.rows) || [];
+  if (!rows.length) return null;
+
+  const wrap = h('section', { class: 'pruef-section' });
+
+  // Header mit Sanity-Check (Berechnet vs. Tocco)
+  const calc = calcWeightedAvg(rows);
+  const tocco = data.modulNote;
+  const head = h('header', { class: 'pruef-head' },
+    h('h4', { class: 'pruef-head__title' }, 'Prüfungen'),
+    h('div', { class: 'pruef-head__meta' }, `${rows.filter(r => r.bewertung != null).length} von ${rows.length} bewertet`)
+  );
+  wrap.append(head);
+
+  // Anzeige-Regel: Tocco's Modul-Note ist immer authoritative.
+  //  - Wenn Eigenrechnung mit Tocco übereinstimmt → beide zeigen (Bestätigung)
+  //  - Wenn sie abweicht → nur Tocco zeigen (Tocco hat oft Sonderlogik wie
+  //    Aufrundung, Mindestnoten, etc. die wir nicht 1:1 nachbilden — kein
+  //    Grund den User mit einer "Diskrepanz" zu verwirren)
+  //  - Wenn keine Eigenrechnung möglich → Tocco + Hinweis warum
+  if (calc != null && tocco != null) {
+    const matches = Math.abs(calc - tocco) < 0.05; // Floating-point-Toleranz
+    if (matches) {
+      wrap.append(
+        h('div', { class: 'pruef-summary is-ok' },
+          h('span', {}, 'Berechnet: ', h('b', {}, calc.toFixed(3))),
+          h('span', { class: 'pruef-summary__sep' }, '·'),
+          h('span', {}, 'Tocco: ', h('b', {}, Number(tocco).toFixed(3)))
+        )
+      );
+    } else {
+      wrap.append(
+        h('div', { class: 'pruef-summary is-ok' },
+          h('span', {}, 'Modulnote (Tocco): ', h('b', {}, Number(tocco).toFixed(3)))
+        )
+      );
+    }
+  } else if (tocco != null && rows.some(r => r.bewertung == null)) {
+    wrap.append(
+      h('div', { class: 'pruef-summary is-partial' },
+        h('span', {}, 'Tocco: ', h('b', {}, Number(tocco).toFixed(3))),
+        h('span', { class: 'pruef-summary__sep' }, '·'),
+        h('span', { class: 'pruef-summary__hint' }, 'noch nicht alle bewertet')
+      )
+    );
+  } else if (tocco != null) {
+    wrap.append(
+      h('div', { class: 'pruef-summary is-ok' },
+        h('span', {}, 'Modulnote (Tocco): ', h('b', {}, Number(tocco).toFixed(3)))
+      )
+    );
+  }
+
+  const list = h('div', { class: 'pruef-list' });
+  for (const p of rows) {
+    const noteCls = gradeClass(p.bewertung);
+    const note = p.bewertung != null ? Number(p.bewertung).toFixed(p.bewertung_raw && /\.\d{3}/.test(p.bewertung_raw) ? 3 : 2) : '–';
+    list.append(
+      h('div', { class: 'pruef-item' },
+        h('span', { class: `pruef-typ ${pruefTypBadgeClass(p.pruefung_typ)}` }, p.pruefung_typ === 'OTHER' ? '·' : p.pruefung_typ),
+        h('div', { class: 'pruef-item__body' },
+          h('div', { class: 'pruef-item__label' }, p.bezeichnung || `${p.pruefung_typ} ${p.pruefung_nr}`),
+          p.gewicht ? h('div', { class: 'pruef-item__weight' }, p.gewicht) : null
+        ),
+        h('div', { class: `pruef-item__note ${noteCls}` }, note)
+      )
+    );
+  }
+  wrap.append(list);
+  return wrap;
+}
+
+function renderHistorySection(data, fallbackTitle) {
+  const rows = (data && data.rows) || [];
+  if (!rows.length) {
+    return h('section', { class: 'hist-section' },
+      h('header', { class: 'pruef-head' },
+        h('h4', { class: 'pruef-head__title' }, 'Verlauf')
+      ),
+      h('div', { class: 'empty empty--compact' }, 'Noch keine Historie.')
+    );
+  }
+  const wrap = h('section', { class: 'hist-section' },
+    h('header', { class: 'pruef-head' },
+      h('h4', { class: 'pruef-head__title' }, 'Verlauf'),
+      h('div', { class: 'pruef-head__meta' }, `${rows.length} Eintrag${rows.length > 1 ? 'e' : ''}`)
+    )
+  );
+  const list = h('div', { class: 'hist-list' });
+  for (const r of rows) {
+    list.append(
+      h('div', { class: 'hist-item' },
+        h('div', {},
+          h('div', { class: 'hist-date' }, r.recorded_at ? new Date(r.recorded_at).toLocaleString('de-CH') : '-'),
+          r.fach_name ? h('div', { class: 'fach-cell__code' }, r.fach_name) : null,
+        ),
+        h('div', { class: `hist-note ${gradeClass(r.note)}` }, fmtGrade(r.note)),
+      )
+    );
+  }
+  wrap.append(list);
+  return wrap;
+}
+
 async function openHistory(row) {
   const id = row.kuerzel_id || row.id;
   if (!id) return;
@@ -476,40 +604,45 @@ async function openHistory(row) {
   const title = $('#historyTitle');
   const body = $('#historyBody');
 
-  title.textContent = row.fach_name || row.kuerzel_full || 'Notenverlauf';
+  title.textContent = row.fach_name || row.kuerzel_full || 'Modul-Details';
   body.innerHTML = '';
-  body.append(h('div', { class: 'empty' }, 'Lade Verlauf...'));
+  body.append(h('div', { class: 'empty' }, 'Lade Daten...'));
   modal.hidden = false;
   modal.setAttribute('aria-hidden', 'false');
 
-  try {
-    const data = await api.get(`/api/history/${encodeURIComponent(id)}`);
-    body.innerHTML = '';
-    const rows = (data && data.rows) || [];
-    if (!rows.length) {
-      body.append(h('div', { class: 'empty' }, 'Noch keine Historie.'));
-      return;
-    }
-    const list = h('div', { class: 'hist-list' });
-    for (const r of rows) {
-      list.append(
-        h('div', { class: 'hist-item' },
-          h('div', {},
-            h('div', { class: 'hist-date' }, r.recorded_at ? new Date(r.recorded_at).toLocaleString('de-CH') : '-'),
-            r.fach_name ? h('div', { class: 'fach-cell__code' }, r.fach_name) : null,
-          ),
-          h('div', { class: `hist-note ${gradeClass(r.note)}` }, fmtGrade(r.note)),
-        )
-      );
-    }
-    body.append(list);
-  } catch (err) {
-    body.innerHTML = '';
-    if (err && err.silent) {
+  // Beide APIs parallel — Pruefungen können fehlen (kein Detail-Scrape passiert),
+  // History sollte fast immer was haben.
+  const [historyRes, pruefungenRes] = await Promise.allSettled([
+    api.get(`/api/history/${encodeURIComponent(id)}`),
+    api.get(`/api/noten/${encodeURIComponent(id)}/pruefungen`)
+  ]);
+
+  // Silent-Fehler (401) → Modal schließen, Login-Overlay übernimmt
+  for (const r of [historyRes, pruefungenRes]) {
+    if (r.status === 'rejected' && r.reason && r.reason.silent) {
       closeHistory();
       return;
     }
-    body.append(h('div', { class: 'empty' }, `Fehler: ${err.message}`));
+  }
+
+  body.innerHTML = '';
+
+  // Pruefungen-Section (oben, falls Daten vorhanden)
+  if (pruefungenRes.status === 'fulfilled') {
+    const sec = renderPruefungenSection(pruefungenRes.value);
+    if (sec) body.append(sec);
+  }
+
+  // History-Section
+  if (historyRes.status === 'fulfilled') {
+    body.append(renderHistorySection(historyRes.value, row.fach_name));
+  } else {
+    body.append(h('div', { class: 'empty' }, `Fehler: ${historyRes.reason && historyRes.reason.message || 'unbekannt'}`));
+  }
+
+  // Fallback wenn beide Sektionen leer (sehr selten — nur wenn auch History 0 hat)
+  if (!body.children.length) {
+    body.append(h('div', { class: 'empty' }, 'Keine Daten verfügbar.'));
   }
 }
 
@@ -559,7 +692,11 @@ function renderStundenplan(plan) {
     byDay.get(key).push(r);
   }
 
-  for (const [date, events] of byDay.entries()) {
+  // Tage in umgekehrter Reihenfolge: am weitesten weg ganz oben, heute unten.
+  // Innerhalb eines Tages bleibt's chronologisch (Frühstunden oben innerhalb
+  // des Tag-Blocks).
+  const days = [...byDay.entries()].reverse();
+  for (const [date, events] of days) {
     const group = h('section', { class: 'day-group' });
     group.append(h('div', { class: 'day-heading' },
       h('span', { class: 'day-heading__day' }, fmtDateHeading(date)),
@@ -789,6 +926,34 @@ function initSettingsForm() {
       status.classList.add('is-error');
       status.textContent = `Fehler: ${err.message}`;
       toast({ title: 'Speichern fehlgeschlagen', msg: err.message, type: 'error' });
+    }
+  });
+}
+
+// ---------- Stundenplan: Cleanup-Button ----------
+function initClearStundenplanButton() {
+  const btn = $('#clearStundenplanBtn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const ok = confirm(
+      'Alle Stundenplan-Einträge aus der Datenbank löschen?\n\n'
+      + 'Beim nächsten Scrape werden sie wieder geladen.'
+    );
+    if (!ok) return;
+    btn.disabled = true;
+    try {
+      const res = await api.post('/api/stundenplan/clear');
+      const n = res && typeof res.deleted === 'number' ? res.deleted : '?';
+      toast({ title: 'Stundenplan zurückgesetzt', msg: n + ' Eintrag/Einträge gelöscht', type: 'success' });
+      // UI sofort leeren — frische Daten kommen beim nächsten Scrape oder Reload.
+      state.stundenplan = { rows: [], count: 0 };
+      renderStundenplan(state.stundenplan);
+    } catch (err) {
+      if (!(err && err.silent)) {
+        toast({ title: 'Fehler', msg: err.message || 'Konnte nicht löschen', type: 'error' });
+      }
+    } finally {
+      btn.disabled = false;
     }
   });
 }
@@ -1100,6 +1265,7 @@ function boot() {
   initHistoryModal();
   initSettingsForm();
   initScrapeButton();
+  initClearStundenplanButton();
   initDrawer();
   initLogoutButton();
 

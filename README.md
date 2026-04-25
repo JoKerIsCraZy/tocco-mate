@@ -28,10 +28,12 @@ direkt per Telegram.
 | Bereich | Beschreibung |
 |---|---|
 | **Noten-Dashboard** | Durchschnittsberechnung (gesamt und pro Semester), sortier- und filterbar |
-| **Stundenplan** | Übersicht kommender Termine mit Datums- und Limit-Filter |
+| **Modul-Detail-Noten** | Pro Modul werden zusätzlich alle Einzel-Prüfungen (LB / ZP) inkl. Gewicht und Note erfasst — sichtbar im Detail-Modal |
+| **Stundenplan** | Übersicht kommender Termine, im Web-UI rückwärts sortiert (heute unten), im Telegram bis zu 1 Monat oder „Alle" als Multi-Message-Übersicht |
 | **Scheduler** | Intervall-Modus oder konfigurierbarer Wochenplan, UI-steuerbar |
-| **Telegram-Bot** | Push-Notifications bei Notenänderungen und Scrape-Fehlern |
-| **SQLite-Historie** | Lückenlose Nachverfolgung aller Notenänderungen |
+| **Wochen-Check** | Jeden Samstag 03:00 wird automatisch ein voller Detail-Refresh ausgeführt — fängt LB/ZP-Updates ab, die keine Modulnoten-Änderung auslösen (Edge-Case ZP=5.5 + LB=5.5) |
+| **Telegram-Bot** | Push bei Notenänderungen, Raumwechseln, Scrape-Fehlern und Wochen-Check-Funden. Live-Tracking während eines Scrapes mit Phase-Anzeige. Modul-Klick zeigt LB/ZP-Liste |
+| **SQLite-Historie** | Lückenlose Nachverfolgung aller Notenänderungen pro Modul |
 | **Live-Logs** | Echtzeit-Log-Stream im Dashboard via Server-Sent Events |
 
 ---
@@ -260,7 +262,9 @@ Alle Endpoints erwarten den API-Token (außer `/healthz`).
 | `GET` | `/api/settings` | Konfiguration abrufen (Passwort maskiert) |
 | `PATCH` | `/api/settings` | Einstellungen aktualisieren |
 | `GET` | `/api/noten` | Noten abrufen (`?semester=S1&sortBy=note`) |
+| `GET` | `/api/noten/:kuerzelId/pruefungen` | LB / ZP / Sonstige Prüfungen eines Moduls |
 | `GET` | `/api/stundenplan` | Kommende Events (`?limit=100&from=YYYY-MM-DD`) |
+| `POST` | `/api/stundenplan/clear` | Alle Stundenplan-Einträge löschen (UI-Button) |
 | `GET` | `/api/history/:kuerzelId` | Historie eines Fachs |
 | `GET` | `/api/stats` | Gesamt-Statistiken |
 | `POST` | `/api/scrape` | Manuellen Scrape auslösen |
@@ -291,14 +295,25 @@ curl -H "Authorization: Bearer $API_TOKEN" http://localhost:3000/api/noten
 
 | Befehl | Funktion |
 |---|---|
-| `/noten` | Aktuelle Notenübersicht |
+| `/menu` | Hauptmenü öffnen |
+| `/noten` | Notenübersicht — jedes Modul ist als Klick-Button unten anwählbar |
 | `/durchschnitt` | Durchschnitt gesamt und pro Semester |
 | `/heute` | Stundenplan heute |
 | `/morgen` | Stundenplan morgen |
 | `/woche` | Kommende 7 Tage |
-| `/scrape` | Manuellen Scrape auslösen |
-| `/status` | Scheduler- und Dienststatus |
-| `/help` | Befehlsübersicht |
+| `/stundenplan` | Bis zu 1 Monat (Smart-Truncate) — Button „Alle" sendet pro Monat eine eigene Nachricht, die beim Wechsel zurück automatisch gelöscht wird |
+| `/scrape` | Manuellen Scrape auslösen — Live-Tracking der Phasen direkt in der Nachricht |
+| `/status` | Erweiterter Server-Status mit aktueller Phase, letztem Lauf-Summary und Wochen-Check-Info |
+| `/help` | Hauptmenü |
+
+### Push-Nachrichten
+
+| Auslöser | Inhalt |
+|---|---|
+| Modulnote neu / geändert | Note + LB/ZP-Liste des betroffenen Moduls |
+| Raumwechsel oder Online-Switch | Datum, Lektion, Vorher → Nachher |
+| Wochen-Check (Sa 03:00) | Module mit neuen LB/ZP, deren Modulnote sich nicht geändert hat |
+| Scrape-Fehler | Fehlertext |
 
 ---
 
@@ -321,6 +336,30 @@ tocco-mate/
 **Stack:** Node.js 20, Express 5, Playwright 1.59 (Chromium), SQLite (nativ),
 Vanilla-JS-Frontend ohne Build-Pipeline.
 
+### SQLite-Schema
+
+| Tabelle | Inhalt |
+|---|---|
+| `noten` | Eine Zeile pro Modul (Name, Schnitt, `detail_id` für die Tocco-Detail-Page, `detail_scraped_at` für Cooldown) |
+| `noten_history` | Verlauf aller Modulnoten-Änderungen |
+| `noten_pruefungen` | Einzel-Prüfungen pro Modul (`pruefung_typ` = `LB` / `ZP` / `OTHER`, Nr, Bezeichnung, Gewicht, Bewertung) |
+| `stundenplan` | Termine mit Datum, Zeit, Raum, Dozent, Veranstaltung |
+
+Migrations laufen idempotent beim ersten Öffnen — bestehende DBs werden
+automatisch mit den neuen Spalten / Tabellen ergänzt, fehlerhaft als
+`OTHER` klassifizierte Prüfungen werden re-klassifiziert.
+
+### Wie die Modul-Detail-Noten gefunden werden
+
+1. Beim normalen Noten-Scrape wird die DWR-Response (Tocco-internes Wire-
+   Format) abgefangen, um pro Modul die Detail-PK zu extrahieren.
+2. Für Module mit Notenänderung oder ohne bisherige Detail-Daten wird die
+   Tocco-Detail-Page geöffnet und die Prüfungs-Tabelle geparst.
+3. Modul-Cooldown von 12 h verhindert, dass Module mit leerer Detail-Seite
+   bei jedem Scrape erneut versucht werden.
+4. Jeden Samstag 03:00 läuft ein voller Re-Check über alle benoteten Module
+   — fängt LB/ZP-Updates ab, die keine Modulnoten-Änderung auslösen.
+
 ---
 
 ## Troubleshooting
@@ -328,10 +367,14 @@ Vanilla-JS-Frontend ohne Build-Pipeline.
 | Symptom | Lösung |
 |---|---|
 | Login schlägt fehl | Passwort abgelaufen, MFA aktiv oder falsche E-Mail. Setze `HEADLESS=false` für visuelles Debugging. |
+| `Executable doesn't exist` (Playwright) | `npx playwright install chromium` — passiert nach Playwright-Updates wenn der lokale Chromium-Build veraltet ist. |
 | `login-error.png` wird angelegt | Bilddatei im `data/`-Verzeichnis prüfen — sie zeigt die Seite zum Zeitpunkt des Fehlers. |
 | Session ungültig | `data/storage.json` löschen, damit beim nächsten Scrape ein frischer Login erzwungen wird. |
 | Keine Updates | Scheduler-Status (`autoRun`) im Dashboard prüfen oder manuell via `POST /api/scrape` auslösen. |
 | Token vergessen | `data/.api-token` löschen und Dienst neu starten — ein neuer Token wird generiert und geloggt. |
+| Keine LB/ZP im Modul-Modal | Modul wurde noch nicht detail-gescrapt — beim nächsten regulären Scrape oder spätestens beim Samstags-Wochen-Check wird's nachgezogen. Manuell auslösbar via `/scrape`. |
+| Stundenplan zeigt alte Einträge | Im Stundenplan-Tab den Button „DB zurücksetzen" benutzen, danach manuellen Scrape triggern. |
+| Wochen-Check soll erneut laufen | Datei `data/.weekly-detail-at` löschen und Server neu starten — Catch-Up triggert nach 90s. |
 
 ---
 
