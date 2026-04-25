@@ -207,14 +207,14 @@ Bind-Mounts.
 
 ### Zeitzone (TZ)
 
-Steuert die Anzeige von Zeitstempeln in Logs und Telegram-Status. Default
-ist UTC — willst du lokale Zeit (z.B. im Telegram-Status `dd.MM.yyyy HH:mm:ss`),
-setze die `TZ`-Variable auf eine
-[IANA-Zeitzone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
+Steuert die Anzeige von Zeitstempeln in Logs und Telegram-Status (Format
+`dd.MM.yyyy HH:mm:ss`). Default ist `Europe/Zurich` — kannst du auf jede
+[IANA-Zeitzone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)
+umsetzen, falls du in einer anderen Region bist.
 
 | Variable | Default | Beispiele |
 |---|---|---|
-| `TZ` | `Etc/UTC` | `Europe/Zurich`, `Europe/Berlin`, `Europe/Vienna`, `America/New_York` |
+| `TZ` | `Europe/Zurich` | `Europe/Berlin`, `Europe/Vienna`, `America/New_York`, `Etc/UTC` |
 
 > Scheduler-Einstellungen aus dem Web-UI überschreiben die `.env`-Werte
 > und werden in `data/settings.json` persistiert.

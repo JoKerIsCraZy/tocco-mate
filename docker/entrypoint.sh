@@ -11,15 +11,17 @@ set -euo pipefail
 
 PUID="${PUID:-1000}"
 PGID="${PGID:-1000}"
-TZ="${TZ:-Etc/UTC}"
+TZ="${TZ:-Europe/Zurich}"
 
 # Apply timezone so logs + Telegram timestamps render in local time.
 if [[ -f "/usr/share/zoneinfo/$TZ" ]]; then
     ln -sf "/usr/share/zoneinfo/$TZ" /etc/localtime
     echo "$TZ" > /etc/timezone
 else
-    echo "[entrypoint] WARN: unknown TZ '$TZ' — falling back to UTC"
-    TZ="Etc/UTC"
+    echo "[entrypoint] WARN: unknown TZ '$TZ' — falling back to Europe/Zurich"
+    TZ="Europe/Zurich"
+    ln -sf "/usr/share/zoneinfo/$TZ" /etc/localtime
+    echo "$TZ" > /etc/timezone
 fi
 export TZ
 

@@ -10,7 +10,7 @@ FROM mcr.microsoft.com/playwright:v1.59.1-jammy AS base
 WORKDIR /app
 ENV NODE_ENV=production \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    TZ=Etc/UTC
+    TZ=Europe/Zurich
 
 # Pull latest security patches from Ubuntu + upgrade bundled npm
 # (fixes Trivy HIGH in /usr/lib/node_modules/npm: tar, minimatch, picomatch,
@@ -20,8 +20,8 @@ ENV NODE_ENV=production \
 # prompt during `apt upgrade` from blocking the build.
 USER root
 ARG DEBIAN_FRONTEND=noninteractive
-RUN ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime \
- && echo "Etc/UTC" > /etc/timezone \
+RUN ln -fs /usr/share/zoneinfo/Europe/Zurich /etc/localtime \
+ && echo "Europe/Zurich" > /etc/timezone \
  && apt-get update \
  && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends gosu tzdata \
