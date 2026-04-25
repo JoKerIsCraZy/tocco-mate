@@ -119,22 +119,31 @@ async function main() {
   console.log('🎓 Tocco WISS CLI');
 
   const result = await scraper.runScrape(config, onLog);
-  const { noten, stundenplan } = result;
-
-  renderNoten(noten);
-  renderStundenplan(stundenplan);
-
-  // SQLite
-  const database = db.open(path.join(dataDir, 'tocco.db'));
   try {
-    const nStats = db.saveNoten(database, noten);
-    const sStats = db.saveStundenplan(database, stundenplan);
-    const pruned = db.pruneVergangen(database);
-    console.log('\n🗄️  DB → data/tocco.db');
-    console.log('    Noten:        ' + nStats.inserted + ' neu, ' + nStats.updated + ' aktualisiert, ' + nStats.changed + ' Note geändert');
-    console.log('    Stundenplan:  ' + sStats.inserted + ' neu, ' + sStats.updated + ' aktualisiert' + (pruned ? ', ' + pruned + ' vergangen entfernt' : ''));
+    const { noten, stundenplan, detailIdMap } = result;
+
+    renderNoten(noten);
+    renderStundenplan(stundenplan);
+
+    // SQLite
+    const database = db.open(path.join(dataDir, 'tocco.db'));
+    try {
+      const nStats = db.saveNoten(database, noten);
+      if (detailIdMap && Object.keys(detailIdMap).length) {
+        db.updateDetailIds(database, detailIdMap);
+      }
+      const sStats = db.saveStundenplan(database, stundenplan);
+      const pruned = db.pruneVergangen(database);
+      console.log('\n🗄️  DB → data/tocco.db');
+      console.log('    Noten:        ' + nStats.inserted + ' neu, ' + nStats.updated + ' aktualisiert, ' + nStats.changed + ' Note geändert');
+      console.log('    Stundenplan:  ' + sStats.inserted + ' neu, ' + sStats.updated + ' aktualisiert' + (pruned ? ', ' + pruned + ' vergangen entfernt' : ''));
+    } finally {
+      database.close();
+    }
   } finally {
-    database.close();
+    // runScrape lässt den Browser jetzt offen, damit der Server-Pfad einzelne
+    // Module nachscrapen kann. Die CLI nutzt das nicht — also schließen wir hier.
+    if (typeof result.closeBrowser === 'function') await result.closeBrowser();
   }
 }
 

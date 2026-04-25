@@ -162,8 +162,10 @@ const state = {
   nextRun: null,           // ISO string
   lastError: null,         // string | null
   lastStats: null,         // letzter scraper-Result (summary)
-  timer: null,             // scheduled setTimeout handle
+  timer: null,             // scheduled setTimeout handle (regulärer Scrape)
+  weeklyTimer: null,       // setTimeout handle für wöchentlichen Detail-Refresh
   lastManualAt: 0,         // Timestamp (ms) des letzten manuellen scrape-Triggers (Cooldown)
+  lastWeeklyDetailAt: null,// ISO string — letzter wöchentlicher Voll-Refresh
   currentPhase: null,      // 'starting'|'browser'|'login'|'noten'|'stundenplan'|'saving'|null
   phaseStartedAt: null     // ISO timestamp — wann die aktuelle Phase begann
 };
@@ -171,6 +173,28 @@ const state = {
 const sseClients = new Set();
 const SSE_MAX_CLIENTS = 20;
 const MANUAL_SCRAPE_COOLDOWN_MS = 60 * 1000;
+
+// Wöchentlicher Detail-Refresh: jeden Samstag 03:00 Uhr.
+// Hintergrund-Check ob neue ZP/LB hinzugekommen sind, ohne dass sich die
+// Modulnote geändert hätte (Edge-Case ZP=5.5 + LB=5.5 → Schnitt bleibt 5.5).
+const WEEKLY_DETAIL_DAY = 6;       // 0=So, 1=Mo, ..., 6=Sa
+const WEEKLY_DETAIL_HOUR = 3;      // 03:00
+const WEEKLY_DETAIL_FILE = path.join(DATA_DIR, '.weekly-detail-at');
+
+function loadWeeklyDetailState() {
+  try {
+    const v = fs.readFileSync(WEEKLY_DETAIL_FILE, 'utf8').trim();
+    if (v) state.lastWeeklyDetailAt = v;
+  } catch (_) { /* not yet written */ }
+}
+
+function persistWeeklyDetailState() {
+  try {
+    fs.writeFileSync(WEEKLY_DETAIL_FILE, state.lastWeeklyDetailAt || '', { encoding: 'utf8', mode: 0o600 });
+  } catch (e) {
+    logger.log('⚠️  Konnte ' + WEEKLY_DETAIL_FILE + ' nicht schreiben: ' + (e && e.message ? e.message : e), 'warn');
+  }
+}
 
 // =============================================================
 // Helpers
@@ -229,6 +253,17 @@ function buildScraperConfig(s) {
     storageFile: path.join(DATA_DIR, 'storage.json'),
     cwd: DATA_DIR
   };
+}
+
+// Formatiert ein Date / ISO-String für menschen-lesbare Logs als
+// "HH:mm dd.MM.yyyy" (lokale Zeitzone — Node honoriert TZ env var).
+function formatLocalDateTime(d) {
+  if (d == null) return '–';
+  const date = (d instanceof Date) ? d : new Date(d);
+  if (Number.isNaN(date.getTime())) return String(d);
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())} `
+       + `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}`;
 }
 
 function statusPayload() {
@@ -356,6 +391,49 @@ function computeNextRun(s, fromDate = new Date()) {
   return nextWindowStart(naiveNext, s.scheduleDays, s.intervalTimeFrom);
 }
 
+// Berechnet den nächsten Samstag um WEEKLY_DETAIL_HOUR Uhr (lokale Zeit).
+// Falls heute Samstag und es ist NACH der Uhrzeit → nächster Samstag.
+function nextWeeklyDetailRun(fromDate = new Date()) {
+  const target = new Date(fromDate);
+  target.setHours(WEEKLY_DETAIL_HOUR, 0, 0, 0);
+  let daysUntil = (WEEKLY_DETAIL_DAY - target.getDay() + 7) % 7;
+  if (daysUntil === 0 && target <= fromDate) daysUntil = 7;
+  target.setDate(target.getDate() + daysUntil);
+  return target;
+}
+
+function clearWeeklyTimer() {
+  if (state.weeklyTimer) {
+    clearTimeout(state.weeklyTimer);
+    state.weeklyTimer = null;
+  }
+}
+
+function scheduleWeeklyDetailRefresh() {
+  clearWeeklyTimer();
+  const now = Date.now();
+
+  // Catch-Up: wenn letzter Lauf > 7 Tage zurück (oder noch nie gelaufen),
+  // beim nächsten möglichen Slot starten — nicht auf nächsten Samstag warten.
+  // Slot = jetzt + 90s (damit Boot/UI initial fertig ist).
+  let next;
+  const lastMs = state.lastWeeklyDetailAt ? Date.parse(state.lastWeeklyDetailAt) : NaN;
+  const overdue = !Number.isFinite(lastMs) || (now - lastMs) > 7 * 24 * 3600 * 1000;
+  if (overdue) {
+    next = new Date(now + 90 * 1000);
+    logger.log('🗓️  Wochen-Check überfällig — triggert in 90s', 'info');
+  } else {
+    next = nextWeeklyDetailRun();
+  }
+
+  const ms = Math.max(1000, next.getTime() - now);
+  state.weeklyTimer = setTimeout(() => {
+    runScrapeCycle('weekly').catch(() => { /* state.lastError ist gesetzt */ });
+  }, ms);
+  // setTimeout-Delay max ~24.8 Tage (2^31 ms) — bei einer Woche immer ok.
+  logger.log(`🗓️  Nächster Wochen-Detail-Refresh: ${formatLocalDateTime(next)} (in ${Math.round(ms/3600000)}h)`, 'info');
+}
+
 function scheduleNext() {
   clearTimer();
   const s = settings.load();
@@ -374,9 +452,9 @@ function scheduleNext() {
   }, ms);
 
   const friendly = s.scheduleMode === 'weekly'
-    ? next.toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })
+    ? next.toLocaleString('de-DE', { weekday: 'short' })
     : `in ${Math.round(ms/60000)} min`;
-  logger.log(`⏰ Nächster Scrape: ${state.nextRun} (${friendly})`, 'info');
+  logger.log(`⏰ Nächster Scrape: ${formatLocalDateTime(next)} (${friendly})`, 'info');
   broadcastStatus();
 }
 
@@ -404,10 +482,11 @@ async function runScrapeCycle(reason) {
   const startTs = Date.now();
   let result = null;
   let database = null;
+  let scraped = null;
 
   try {
     const cfg = buildScraperConfig(s);
-    const scraped = await scraper.runScrape(
+    scraped = await scraper.runScrape(
       cfg,
       (msg, level) => logger.log(msg, level),
       (phase) => setPhase(phase)
@@ -418,13 +497,87 @@ async function runScrapeCycle(reason) {
     setPhase('saving');
     database = db.open();
     const nStats = db.saveNoten(database, scraped.noten || []);
+
+    // detail_id-Mapping aus DWR-Response in der noten-Tabelle persistieren
+    let detailIdsUpdated = 0;
+    if (scraped.detailIdMap && Object.keys(scraped.detailIdMap).length) {
+      detailIdsUpdated = db.updateDetailIds(database, scraped.detailIdMap);
+    }
+
     const sStats = db.saveStundenplan(database, scraped.stundenplan || []);
     const pruned = db.pruneVergangen(database);
+
+    // Modul-Detail-Scrape: alle Module mit gradeChange (new/changed) UND
+    // alle benoteten Module ohne bisherige Pruefungen-Daten (Backfill).
+    const changedKuerzelIds = (nStats.gradeChanges || [])
+      .map(c => c.kuerzel_id)
+      .filter(Boolean);
+
+    let detailStats = { modulesScraped: 0, totalEntries: 0, errors: 0 };
+    // Modul-Liste je nach Modus:
+    //   reason='weekly' → ALLE benoteten Module mit detail_id (Cooldown ignoriert)
+    //   sonst           → nur Module mit gradeChange ODER ohne bisherige Prüfungen
+    const isWeekly = reason === 'weekly';
+    const toScrape = isWeekly
+      ? db.getKuerzelnWithDetailId(database).map(r => ({ kuerzel_id: r.kuerzel_id, detail_id: r.detail_id }))
+      : db.getKuerzelnNeedingDetailScrape(database, changedKuerzelIds);
+
+    // Wochen-Diff-Sammlung: pro Modul welche Prüfungen sind NEU dazugekommen
+    const weeklyReport = []; // { kuerzel_id, fach_name, semester, kuerzel_code, added: [...] }
+
+    if (toScrape.length && typeof scraped.scrapeDetail === 'function') {
+      setPhase('noten_details');
+      logger.log(`📥 Detail-Scrape für ${toScrape.length} Modul(e)${isWeekly ? ' (wöchentlicher Voll-Refresh)' : ''}`, 'info');
+      for (const m of toScrape) {
+        try {
+          const entries = await scraped.scrapeDetail(m.detail_id);
+          if (entries && entries.length) {
+            const ps = db.savePruefungen(database, m.kuerzel_id, entries);
+            detailStats.modulesScraped++;
+            detailStats.totalEntries += (ps.inserted + ps.updated);
+            logger.log(`  ✓ ${m.kuerzel_id} → ${entries.length} Prüfung(en)`, 'info');
+            // Beim Wochen-Refresh: NEUE Prüfungen die nicht von einem
+            // gradeChange-Push abgedeckt sind → eigener Push-Eintrag
+            if (isWeekly && ps.addedEntries && ps.addedEntries.length) {
+              const isAlreadyCovered = changedKuerzelIds.includes(m.kuerzel_id);
+              if (!isAlreadyCovered) {
+                const modulRow = db.getNotenRow(database, m.kuerzel_id);
+                weeklyReport.push({
+                  kuerzel_id: m.kuerzel_id,
+                  fach_name:  modulRow ? modulRow.fach_name : null,
+                  semester:   modulRow ? modulRow.semester : null,
+                  kuerzel_code: modulRow ? modulRow.kuerzel_code : null,
+                  added:      ps.addedEntries
+                });
+              }
+            }
+          } else {
+            logger.log(`  ⏭️  ${m.kuerzel_id} → keine Prüfungs-Daten gefunden`, 'info');
+          }
+        } catch (e) {
+          detailStats.errors++;
+          logger.log(`  ❌ Detail-Scrape ${m.kuerzel_id}: ${e.message || e}`, 'warn');
+        }
+        // Cooldown-Marker setzen — egal ob Erfolg, Leer oder Fehler. So
+        // wird das Modul nicht bei jedem Cycle erneut versucht (siehe
+        // db.getKuerzelnNeedingDetailScrape Cooldown-Logik).
+        try { db.markDetailScraped(database, m.kuerzel_id); } catch (_) { /* ignore */ }
+      }
+    }
+
+    if (isWeekly) {
+      state.lastWeeklyDetailAt = new Date().toISOString();
+      persistWeeklyDetailState();
+      logger.log(`🔍 Wochen-Check fertig — ${weeklyReport.length} Modul(e) mit neuen Prüfungen`, 'info');
+    }
 
     state.lastStats = {
       noten: nStats,
       stundenplan: sStats,
       pruned,
+      detailIdsUpdated,
+      detail: detailStats,
+      weeklyReport: isWeekly ? weeklyReport : null,
       fetchedAt: scraped.fetchedAt,
       counts: {
         noten: (scraped.noten || []).length,
@@ -435,7 +588,7 @@ async function runScrapeCycle(reason) {
 
     const dur = ((Date.now() - startTs) / 1000).toFixed(1);
     logger.log(
-      `✅ Scrape fertig in ${dur}s — Noten: ${nStats.inserted} neu / ${nStats.updated} updated / ${nStats.changed} Note geändert. Stundenplan: ${sStats.inserted} neu / ${sStats.updated} updated / ${pruned} vergangen entfernt.`,
+      `✅ Scrape fertig in ${dur}s — Noten: ${nStats.inserted} neu / ${nStats.updated} updated / ${nStats.changed} Note geändert. Stundenplan: ${sStats.inserted} neu / ${sStats.updated} updated / ${pruned} vergangen entfernt. Details: ${detailStats.modulesScraped} Modul(e) / ${detailStats.totalEntries} Prüfung(en)${detailStats.errors ? ' / ' + detailStats.errors + ' Fehler' : ''}.`,
       'info'
     );
   } catch (err) {
@@ -445,6 +598,11 @@ async function runScrapeCycle(reason) {
   } finally {
     if (database) {
       try { database.close(); } catch (_) { /* swallow */ }
+    }
+    // Browser sicher schließen (wird seit der Detail-Page-Erweiterung NICHT
+    // mehr automatisch von runScrape geschlossen — Aufrufer-Verantwortung).
+    if (scraped && typeof scraped.closeBrowser === 'function') {
+      try { await scraped.closeBrowser(); } catch (_) { /* swallow */ }
     }
     state.running = false;
     setPhase(null);
@@ -464,19 +622,35 @@ async function runScrapeCycle(reason) {
         const gc = state.lastStats && state.lastStats.noten && state.lastStats.noten.gradeChanges;
         if (gc && gc.length) {
           let currentStats = null;
+          let pruefungenByKuerzel = null;
           try {
             const statDb = db.open();
-            try { currentStats = db.getStats(statDb); } finally { statDb.close(); }
+            try {
+              currentStats = db.getStats(statDb);
+              // Pruefungen für betroffene Module einsammeln (best-effort)
+              pruefungenByKuerzel = {};
+              for (const c of gc) {
+                if (!c.kuerzel_id) continue;
+                pruefungenByKuerzel[c.kuerzel_id] = db.getPruefungen(statDb, c.kuerzel_id);
+              }
+            } finally { statDb.close(); }
           } catch (_) { /* fallback */ }
-          bot.notifyGradeChanges(gc, currentStats);
+          bot.notifyGradeChanges(gc, currentStats, pruefungenByKuerzel);
         }
         const rc = state.lastStats && state.lastStats.stundenplan && state.lastStats.stundenplan.roomChanges;
         if (rc && rc.length) {
           bot.notifyRoomChanges(rc);
         }
+        // Wöchentlicher Detail-Refresh: Push für Module mit neuen ZP/LB
+        // die NICHT bereits durch einen gradeChange-Push abgedeckt waren.
+        const wr = state.lastStats && state.lastStats.weeklyReport;
+        if (wr && wr.length) {
+          bot.notifyWeeklyDetailReport(wr);
+        }
       }
     } catch (_) { /* notify ist best-effort */ }
     scheduleNext();
+    scheduleWeeklyDetailRefresh();
   }
 
   return { triggered: true, result };
@@ -634,7 +808,12 @@ app.patch('/api/settings', (req, res) => {
           nextRun: state.nextRun,
           lastError: state.lastError,
           enabled: settings.load().autoRun,
-          intervalMinutes: settings.load().intervalMinutes
+          intervalMinutes: settings.load().intervalMinutes,
+          currentPhase: state.currentPhase,
+          phaseStartedAt: state.phaseStartedAt,
+          lastStats: state.lastStats,
+          lastWeeklyDetailAt: state.lastWeeklyDetailAt,
+          nextWeeklyRun: state.weeklyTimer ? nextWeeklyDetailRun().toISOString() : null
         })
       }).catch(e => logger.log('Telegram-Bot Neustart fehlgeschlagen: ' + e.message, 'error'));
     }
@@ -681,6 +860,24 @@ app.get('/api/noten', (req, res) => {
     });
   } catch (e) {
     logger.log('DB error at GET /api/noten: ' + (e && e.message ? e.message : e), 'error');
+    apiError(res, 500, 'Ein Datenbankfehler ist aufgetreten');
+  } finally {
+    if (database) try { database.close(); } catch (_) {}
+  }
+});
+
+// ---------- Stundenplan: Cleanup (alle Einträge löschen) ----------
+// Destruktive Aktion — wird vom UI-Button getriggert, dort gibt's eine
+// Bestätigung. Token-Auth via Middleware ist bereits aktiv für /api/*.
+app.post('/api/stundenplan/clear', (req, res) => {
+  let database = null;
+  try {
+    database = db.open();
+    const deleted = db.clearStundenplan(database);
+    logger.log(`🧹 Stundenplan zurückgesetzt — ${deleted} Einträge gelöscht`, 'info');
+    res.json({ deleted });
+  } catch (e) {
+    logger.log('DB error at POST /api/stundenplan/clear: ' + (e && e.message ? e.message : e), 'error');
     apiError(res, 500, 'Ein Datenbankfehler ist aufgetreten');
   } finally {
     if (database) try { database.close(); } catch (_) {}
@@ -738,6 +935,35 @@ app.get('/api/history/:kuerzelId', (req, res) => {
     res.json({ rows });
   } catch (e) {
     logger.log('DB error at GET /api/history: ' + (e && e.message ? e.message : e), 'error');
+    apiError(res, 500, 'Ein Datenbankfehler ist aufgetreten');
+  } finally {
+    if (database) try { database.close(); } catch (_) {}
+  }
+});
+
+// ---------- Modul-Prüfungen (Detail-Noten LB/ZP/...) ----------
+app.get('/api/noten/:kuerzelId/pruefungen', (req, res) => {
+  const id = req.params.kuerzelId;
+  if (!id) return apiError(res, 400, 'kuerzelId fehlt');
+  if (id.length > 128 || !/^[\w\-./:]+$/.test(id)) {
+    return apiError(res, 400, 'Ungültige kuerzelId');
+  }
+
+  let database = null;
+  try {
+    database = db.open();
+    const rows = db.getPruefungen(database, id);
+    // Modul-Note + detail_id für UI-Anzeige (berechneter Schnitt vs. Tocco-Schnitt)
+    const modulRow = db.getNotenRow(database, id);
+    res.json({
+      rows,
+      modulNote: modulRow ? modulRow.note : null,
+      modulNoteRaw: modulRow ? modulRow.note_raw : null,
+      detailId: modulRow ? modulRow.detail_id : null,
+      fachName: modulRow ? modulRow.fach_name : null
+    });
+  } catch (e) {
+    logger.log('DB error at GET /api/noten/:id/pruefungen: ' + (e && e.message ? e.message : e), 'error');
     apiError(res, 500, 'Ein Datenbankfehler ist aufgetreten');
   } finally {
     if (database) try { database.close(); } catch (_) {}
@@ -875,6 +1101,15 @@ server.listen(initial.port, '0.0.0.0', () => {
     logger.log('ℹ️  autoRun=false → kein Auto-Scheduler. Trigger via POST /api/scrape oder Web-UI.', 'info');
   }
 
+  // Wöchentlicher Detail-Refresh läuft IMMER, unabhängig von autoRun.
+  // Findet neue ZP/LB die durch den Modulnoten-Push übersehen wurden
+  // (Edge-Case ZP=5.5 + LB=5.5 → Schnitt unverändert).
+  loadWeeklyDetailState();
+  if (state.lastWeeklyDetailAt) {
+    logger.log(`🗓️  Letzter Wochen-Check: ${formatLocalDateTime(state.lastWeeklyDetailAt)}`, 'info');
+  }
+  scheduleWeeklyDetailRefresh();
+
   // Telegram-Bot starten wenn aktiviert
   if (initial.telegramEnabled && initial.telegramToken && initial.telegramAllowedUserId) {
     bot.start({
@@ -892,7 +1127,16 @@ server.listen(initial.port, '0.0.0.0', () => {
         nextRun: state.nextRun,
         lastError: state.lastError,
         enabled: settings.load().autoRun,
-        intervalMinutes: settings.load().intervalMinutes
+        intervalMinutes: settings.load().intervalMinutes,
+        currentPhase: state.currentPhase,
+        phaseStartedAt: state.phaseStartedAt,
+        lastStats: state.lastStats,
+        lastWeeklyDetailAt: state.lastWeeklyDetailAt,
+        nextWeeklyRun: (() => {
+          if (!state.weeklyTimer) return null;
+          // Approximation: rechne den nächsten Slot
+          return nextWeeklyDetailRun().toISOString();
+        })()
       })
     }).catch(e => logger.log('Telegram-Bot Start fehlgeschlagen: ' + e.message, 'error'));
   } else if (initial.telegramToken || initial.telegramAllowedUserId) {
@@ -911,6 +1155,7 @@ function shutdown(signal) {
   shuttingDown = true;
   logger.log(`🛑 ${signal} empfangen — fahre Server runter...`, 'warn');
   clearTimer();
+  clearWeeklyTimer();
   try { bot.stop(); } catch (_) {}
 
   // SSE-Clients beenden

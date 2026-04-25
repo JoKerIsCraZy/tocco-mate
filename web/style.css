@@ -742,6 +742,18 @@ button {
 .btn--ghost { background: var(--surface-2); color: var(--text-mute); border: 1px solid var(--border-soft); }
 .btn--ghost:hover { background: var(--surface-3); color: var(--text); }
 
+/* Destruktive Aktion (Stundenplan zurücksetzen) — gedämpfter Rot-Tint, wird
+   beim Hover deutlicher. Soll nicht versehentlich gedrückt werden. */
+.btn--danger-soft {
+  color: var(--text-mute);
+}
+.btn--danger-soft:hover {
+  background: rgba(255, 107, 107, 0.1);
+  color: var(--danger);
+  border-color: rgba(255, 107, 107, 0.4);
+}
+.btn--danger-soft:hover .btn__icon { color: var(--danger); }
+
 .settings__advanced summary {
   cursor: pointer;
   font-size: 13px;
@@ -998,8 +1010,8 @@ input[type="range"]::-moz-range-thumb {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-xl);
-  width: min(520px, 100%);
-  max-height: 80vh;
+  width: min(620px, 100%);
+  max-height: 85vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1044,6 +1056,136 @@ input[type="range"]::-moz-range-thumb {
 }
 .hist-date { font-family: var(--font-mono); font-size: 12px; color: var(--text-mute); }
 .hist-note { font-family: var(--font-mono); font-size: 16px; font-weight: 600; }
+
+/* Modul-Details: Prüfungen-Section + History-Section */
+.pruef-section { margin-bottom: 20px; }
+.hist-section + * { margin-top: 16px; }
+
+.pruef-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.pruef-head__title {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-mute);
+  font-weight: 600;
+}
+.pruef-head__meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.pruef-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: var(--r-md);
+  background: rgba(110, 168, 254, 0.08);
+  border: 1px solid var(--accent-border);
+  font-size: 12px;
+  color: var(--text-mute);
+  font-family: var(--font-mono);
+}
+.pruef-summary b { color: var(--text); font-weight: 600; font-feature-settings: "tnum" 1; }
+.pruef-summary__sep { color: var(--text-dim); }
+.pruef-summary.is-mismatch {
+  background: rgba(255, 169, 77, 0.08);
+  border-color: rgba(255, 169, 77, 0.4);
+}
+.pruef-summary.is-partial {
+  background: rgba(154, 163, 181, 0.06);
+  border-color: var(--border-soft);
+}
+.pruef-summary__warn {
+  color: var(--warning);
+  font-weight: 600;
+}
+.pruef-summary__hint {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.pruef-list { display: grid; gap: 8px; }
+.pruef-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+}
+
+.pruef-typ {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text-mute);
+  border: 1px solid var(--border-soft);
+}
+.pruef-typ--zp {
+  color: #f5b95a;
+  background: rgba(245, 185, 90, 0.1);
+  border-color: rgba(245, 185, 90, 0.3);
+}
+.pruef-typ--lb {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+.pruef-typ--other {
+  color: var(--text-dim);
+}
+
+.pruef-item__body { min-width: 0; }
+.pruef-item__label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pruef-item__weight {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+.pruef-item__note {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-align: right;
+  min-width: 56px;
+}
+
+.empty.empty--compact {
+  padding: 20px 0;
+  font-size: 13px;
+}
 
 /* ============================================================
    Toasts
@@ -1278,7 +1420,7 @@ input[type="range"]::-moz-range-thumb {
 
 .progress__steps {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 8px;
   margin-bottom: 10px;
 }

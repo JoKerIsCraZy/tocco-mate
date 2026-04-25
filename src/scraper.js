@@ -506,6 +506,188 @@ function parseStundenplan(text) {
   return entries;
 }
 
+// ---------- DWR-Intercept (Modul-Detail-IDs) ----------
+// Tocco lädt die Noten-Tabelle via DWR (Direct Web Remoting) — die Response
+// ist JS-Wire-Format (nicht JSON). Pro Modulzeile enthält sie:
+//   - die Detail-PK (für die Detail-URL #detail&id=NNNN&input_type=grades)
+//   - das kuerzel im Format "32359 / UIFZ-... / 231 - ..."
+// Wir hängen einen Response-Listener an die Page, sammeln die Responses
+// und parsen daraus das Mapping kuerzel_id → detail_id.
+function startDwrCapture(page, urlMatcher) {
+  const responses = [];
+  const handler = async (resp) => {
+    try {
+      if (!urlMatcher.test(resp.url())) return;
+      const text = await resp.text();
+      if (text) responses.push(text);
+    } catch (_) { /* ignore */ }
+  };
+  page.on('response', handler);
+  return {
+    stop() { try { page.off('response', handler); } catch (_) {} },
+    getResponses() { return responses.slice(); }
+  };
+}
+
+// Parst eine DWR-Response (oder mehrere konkateniert) und liefert
+// { kuerzel_id: detail_id }. Tolerant gegen kleine Format-Schwankungen.
+function parseDwrIdMap(text) {
+  const map = {};
+  if (!text) return map;
+
+  // 1. Alle "relInput.relEvent.label" → value: "NNNN / ..." Treffer
+  //    mit ihrer Stringposition, um sie später dem nächsten Input_data-Block
+  //    zuordnen zu können.
+  const labels = [];
+  const labelRe = /"relInput\.relEvent\.label"[\s\S]*?value:\s*"(\d+)[^"]*"/g;
+  let m;
+  while ((m = labelRe.exec(text)) !== null) {
+    labels.push({ pos: m.index, kuerzelId: m[1] });
+  }
+
+  // 2. Alle Input_data-Block-PKs (das ist die Modul-Note-Detail-ID).
+  //    Andere PrimaryKeys im Block (für Event/Input_type-Relationen) sind nicht
+  //    gemeint — nur die mit entityName:"Input_data".
+  const ids = [];
+  const idRe = /entityName:\s*"Input_data"[\s\S]*?key:\s*new\s+nice2\.entity\.PrimaryKey\('(\d+)'\)/g;
+  while ((m = idRe.exec(text)) !== null) {
+    ids.push({ pos: m.index, detailId: m[1] });
+  }
+
+  // 3. Pair up: für jede detail_id die zeitlich davor letzte Label.
+  //    (Im DWR-Wire-Format kommt das Cell-Mapping VOR dem sources-Block.)
+  for (const id of ids) {
+    let best = null;
+    for (const lab of labels) {
+      if (lab.pos < id.pos && (!best || lab.pos > best.pos)) best = lab;
+    }
+    if (best && best.kuerzelId) {
+      // Erstes Mapping gewinnt — falls gleicher kuerzel mehrfach erscheint
+      // (z.B. wegen Pagination), nimm das erste.
+      if (!map[best.kuerzelId]) map[best.kuerzelId] = id.detailId;
+    }
+  }
+  return map;
+}
+
+// ---------- Detail-Page-Scrape (Prüfungen pro Modul) ----------
+async function scrapeModulDetail(page, baseUrl, detailId, onLog) {
+  // Defensiv: detailId muss numerisch sein (Tocco-PK). Verhindert URL-Fragment-
+  // Injection, falls die DWR-Response je etwas Nicht-Numerisches enthält oder
+  // ein Aufrufer mal manipulierten Input durchschleust.
+  if (!/^\d+$/.test(String(detailId))) {
+    throw new Error('Ungültige detailId: ' + String(detailId).slice(0, 32));
+  }
+  const url = baseUrl
+    + '/extranet/Meine-Bildung/Noten-für-Studierende'
+    + '?nocache=' + Date.now()
+    + '#detail&id=' + detailId
+    + '&input_type=grades';
+
+  onLog('  📖 Detail ' + detailId + ' lädt...', 'info');
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await waitForToccoLoad(page, 'Detail ' + detailId, onLog);
+
+  // Gleiche Strategie wie in scrapePage: aus dem Main-Container den InnerText holen.
+  const text = await page.evaluate(() => {
+    const main = document.querySelector('main, #main, .main-content, .content, article, body');
+    return main ? (main.innerText || '').trim() : '';
+  });
+
+  return parsePruefungen(text);
+}
+
+// Text-Parser für die Detail-Tabelle.
+// Erwartetes Layout (innerText):
+//   Ergebnis
+//   Bewertung: 5.000
+//
+//   Prüfung   Bezeichnung   Gewicht   Bewertung
+//   1         LB 1          25%       4.800
+//   2         LB 2          25%       4.700
+//   ...
+//   Zurück zur Übersicht
+//
+// Bezeichnung kann mehrzeilig sein (z.B. "Mündliche\nPrüfung") — daher
+// erkennen wir die Gewichts-Spalte am "%" Zeichen statt feste Spalten zu zählen.
+function parsePruefungen(text) {
+  if (!text) return [];
+  const lines = text.split('\n').map(l => l.replace(/\t+/g, ' ').trim()).filter(Boolean);
+
+  // Header finden — entweder 4 separate Zeilen ("Prüfung"/"Bezeichnung"/"Gewicht"/"Bewertung")
+  // oder eine kombinierte Zeile. Bei der 4-Zeilen-Variante prüfen wir ALLE 4
+  // Spalten-Headertexte, damit eine fremde Tabelle die mit "Prüfung\nBezeichnung"
+  // beginnt nicht versehentlich getroffen wird.
+  let dataStart = -1;
+  for (let i = 0; i < lines.length - 3; i++) {
+    if (/^Pr(ü|ue)fung$/i.test(lines[i])
+        && /^Bezeichnung$/i.test(lines[i + 1])
+        && /^Gewicht$/i.test(lines[i + 2])
+        && /^Bewertung$/i.test(lines[i + 3])) {
+      dataStart = i + 4; // 4 Header-Spalten als separate Zeilen
+      break;
+    }
+    if (/Pr(ü|ue)fung\s+Bezeichnung\s+Gewicht\s+Bewertung/i.test(lines[i])) {
+      dataStart = i + 1; // Header in einer Zeile
+      break;
+    }
+  }
+  if (dataStart < 0) return [];
+
+  const stopMarkers = /^(Zur(ü|ue)ck|Seite|Anzeige Eintrag|DIREKT ZU|Copyright|WISS|RECHTLICHES|zu unserem|Datenschutz|Allg\.|Alle Rechte|Ein Unternehmen|Kalaidos)/i;
+
+  function commitEntry(buf, out) {
+    if (buf.length < 4) return;
+    // Spaltenpositionen erkennen:
+    //   buf[0]              = Pruefung-Nr (eine Ziffer)
+    //   buf[gewichtIdx]     = Gewicht (enthält %)
+    //   buf[gewichtIdx+1]   = Bewertung (numerisch)
+    //   dazwischen          = Bezeichnung (kann multi-token sein)
+    let gewichtIdx = -1;
+    for (let i = 1; i < buf.length - 1; i++) {
+      if (/%/.test(buf[i])) { gewichtIdx = i; break; }
+    }
+    if (gewichtIdx < 2) {
+      // Fallback: Annahme Bezeichnung = 1 Token
+      gewichtIdx = 2;
+    }
+    const bezeichnung = buf.slice(1, gewichtIdx).join(' ').trim();
+    const gewicht     = buf[gewichtIdx];
+    const bewertung   = buf[gewichtIdx + 1];
+
+    const nr = parseInt(buf[0], 10);
+    if (!Number.isFinite(nr)) return;
+
+    out.push({
+      pruefung_nr: nr,
+      bezeichnung,
+      gewicht,
+      bewertung,
+      bewertung_raw: bewertung
+    });
+  }
+
+  const entries = [];
+  let buf = [];
+  for (let i = dataStart; i < lines.length; i++) {
+    const l = lines[i];
+    if (stopMarkers.test(l)) break;
+    // Eine neue Zeile beginnt mit einer 1-2-stelligen Pruefung-Nr.
+    // Aber: eine Bewertung wie "4.800" enthält auch eine Ziffer am Anfang —
+    // die wird unten von commitEntry korrekt behandelt, weil sie nach dem
+    // %-Token kommt. Hier reicht: \d{1,2}$
+    if (/^\d{1,2}$/.test(l)) {
+      commitEntry(buf, entries);
+      buf = [l];
+    } else if (buf.length) {
+      buf.push(l);
+    }
+    // else: noch keine erste Nr gesehen — überspringen
+  }
+  commitEntry(buf, entries);
+  return entries;
+}
+
 // ---------- Public API ----------
 // runScrape(config, onLog, onPhase?)
 //   onLog(message, level)           — free-form log messages
@@ -514,7 +696,23 @@ function parseStundenplan(text) {
 //     'login'    → Microsoft SSO login flow (only if no cached session)
 //     'noten'    → loading + parsing grades page
 //     'stundenplan' → loading + parsing schedule page
+//     'noten_details' → loading + parsing per-module detail pages (aufrufer-getriggert)
 //   Caller may layer 'saving' / null on top after runScrape returns.
+//
+// ⚠️ BROWSER-LIFECYCLE: runScrape lässt den Playwright-Browser auf der Happy-Path
+//    OFFEN, damit der Aufrufer via result.scrapeDetail(...) zusätzliche Pages
+//    laden kann. DER AUFRUFER MUSS result.closeBrowser() in einem finally-Block
+//    rufen, sonst leakt ein Chromium-Prozess. Auf dem Error-Path wird der
+//    Browser intern geschlossen — der zurückgeworfene Error braucht kein
+//    closeBrowser() mehr.
+//
+// Result enthält neben { noten, stundenplan, rawText, fetchedAt } zusätzlich:
+//   detailIdMap   { '<kuerzel_id>': '<detail_id>' }   — aus DWR-Response
+//   scrapeDetail  async (detailId) => Pruefungen-Array — Aufrufer kann
+//                 nach runScrape() einzelne Module nachscrapen, OHNE den
+//                 Browser zu schließen. Browser bleibt offen bis closeBrowser().
+//   closeBrowser  async () => void                    — schließt den Playwright-Browser.
+//                 PFLICHT-Aufruf via finally — siehe Hinweis oben.
 async function runScrape(config, onLog, onPhase) {
   const log = onLog || (() => {});
   const phase = typeof onPhase === 'function' ? onPhase : () => {};
@@ -532,12 +730,46 @@ async function runScrape(config, onLog, onPhase) {
 
   const { browser, page } = await ensureLoggedIn(cfg, log, phase);
 
+  let detailIdMap = {};
+  let dwrCapture = null;
+
   try {
     phase('noten');
+
+    // DWR-Listener registrieren BEVOR wir die Noten-Page laden,
+    // damit wir die Tabellen-Daten-Response abfangen.
+    dwrCapture = startDwrCapture(page, /SearchService\.search/i);
+
     const notenRaw = await scrapePage(page, cfg.notenUrl, 'Noten', log, {
       afterLoad: (p) => setPageSize(p, 100, log)
     });
     const noten = parseNoten(notenRaw.text || '');
+
+    // DWR-Listener stoppen — alle weiteren Detail-Calls sollen nicht das ID-Map verfälschen.
+    const dwrTexts = dwrCapture.getResponses();
+    dwrCapture.stop();
+    dwrCapture = null;
+
+    // ID-Map aus den gesammelten Responses parsen
+    for (const t of dwrTexts) {
+      const partial = parseDwrIdMap(t);
+      for (const [k, v] of Object.entries(partial)) {
+        if (!detailIdMap[k]) detailIdMap[k] = v;
+      }
+    }
+    const idCount = Object.keys(detailIdMap).length;
+    const notenCount = noten.length;
+    if (idCount) {
+      log('  🔑 ' + idCount + ' Modul-Detail-IDs aus DWR extrahiert', 'info');
+      // Sanity-Check: wenn deutlich weniger IDs als Module, hat sich Tocco's
+      // Wire-Format womöglich verschoben. Macht den Drift sichtbar — sonst
+      // würde der Detail-Scrape nur leise viele Module verpassen.
+      if (notenCount > 0 && idCount < notenCount * 0.5) {
+        log('  ⚠️  DWR-ID-Map hat nur ' + idCount + '/' + notenCount + ' Module — Tocco-Format könnte sich geändert haben', 'warn');
+      }
+    } else if (notenCount > 0) {
+      log('  ⚠️  Keine Modul-Detail-IDs gefunden — Detail-Scrape wird übersprungen', 'warn');
+    }
 
     phase('stundenplan');
     const spRaw = await scrapePage(page, cfg.stundenplanUrl, 'Stundenplan', log, {
@@ -548,12 +780,25 @@ async function runScrape(config, onLog, onPhase) {
     return {
       noten,
       stundenplan,
+      detailIdMap,
       rawText: { noten: notenRaw.text, stundenplan: spRaw.text },
-      fetchedAt: new Date().toISOString()
+      fetchedAt: new Date().toISOString(),
+      // Aufrufer kann nach runScrape() einzelne Module nachscrapen.
+      // Browser bleibt bis closeBrowser() offen.
+      scrapeDetail: async (detailId) => scrapeModulDetail(page, cfg.baseUrl, detailId, log),
+      closeBrowser: async () => { try { await browser.close(); } catch (_) {} }
     };
-  } finally {
+  } catch (err) {
+    if (dwrCapture) try { dwrCapture.stop(); } catch (_) {}
     await browser.close().catch(() => {});
+    throw err;
   }
 }
 
-module.exports = { runScrape, redact };
+module.exports = {
+  runScrape,
+  redact,
+  // Exposed for tests / ad-hoc usage
+  parseDwrIdMap,
+  parsePruefungen
+};
