@@ -149,6 +149,17 @@ function nextWeekRange() {
   return { from: mon.toISOString().slice(0, 10), to: sun.toISOString().slice(0, 10) };
 }
 
+// Formats an ISO timestamp into "dd.MM.yyyy HH:mm:ss" using the local timezone.
+// Node honors the TZ env var — set TZ=Europe/Zurich (etc) to control output.
+function formatDateTime(iso) {
+  if (!iso) return '–';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} `
+       + `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 // ---------- Keyboards ----------
 function mainMenu() {
   return {
@@ -430,8 +441,8 @@ async function screenStatus() {
   let text = '📟 <b>Server-Status</b>\n\n';
   if (s) {
     text += (s.running ? '🔄 Läuft gerade…\n' : '💤 Idle\n');
-    text += 'Letzter Run: <b>' + escapeHtml(s.lastRun || '–') + '</b>\n';
-    text += 'Nächster Run: <b>' + escapeHtml(s.nextRun || (s.enabled ? '(berechnend)' : 'manuell')) + '</b>\n';
+    text += 'Letzter Run: <b>' + escapeHtml(formatDateTime(s.lastRun)) + '</b>\n';
+    text += 'Nächster Run: <b>' + escapeHtml(s.nextRun ? formatDateTime(s.nextRun) : (s.enabled ? '(berechnend)' : 'manuell')) + '</b>\n';
     text += 'Auto-Run: <b>' + (s.enabled ? `ein (${s.intervalMinutes} Min)` : 'aus') + '</b>\n';
     if (s.lastError) text += '⚠️ Letzter Fehler: <code>' + escapeHtml(s.lastError) + '</code>\n';
   } else {

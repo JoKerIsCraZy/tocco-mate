@@ -1,0 +1,19 @@
+# Default: let git auto-detect text vs binary, normalize line endings on commit.
+* text=auto
+
+# Shell scripts MUST stay LF — they run inside Linux containers, CRLF breaks
+# the shebang and `set -e` lines (`bash\r: No such file`).
+*.sh           text eol=lf
+docker/**/*.sh text eol=lf
+docker/entrypoint.sh text eol=lf
+
+# Dockerfiles, compose, and Linux config files: LF
+Dockerfile     text eol=lf
+*.dockerfile   text eol=lf
+docker-compose*.yml text eol=lf
+.env.example   text eol=lf
+
+# Windows-only files: CRLF
+*.bat          text eol=crlf
+*.cmd          text eol=crlf
+*.ps1          text eol=crlf

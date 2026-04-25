@@ -23,6 +23,15 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      # PUID/PGID: match the host user that owns ./data
+      # - Unraid:        PUID=99   PGID=100
+      # - Typical Linux: PUID=1000 PGID=1000  (run `id -u` / `id -g`)
+      # - Synology:      PUID=1026 PGID=100
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      # Timezone — controls log + Telegram timestamps. Examples:
+      # Europe/Zurich, Europe/Berlin, Europe/Vienna, America/New_York
+      - TZ=${TZ:-Etc/UTC}
 
     # Persistent volume for SQLite DB and generated tokens
     # data/ directory created by Dockerfile remains unchanged at startup
