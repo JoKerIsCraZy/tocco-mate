@@ -16,8 +16,13 @@ ENV NODE_ENV=production \
 # (fixes Trivy HIGH in /usr/lib/node_modules/npm: tar, minimatch, picomatch,
 #  and MEDIUM/LOW in openssl, libssl3, libudev1, libgdk-pixbuf, libcap2)
 # Also installs gosu for PUID/PGID privilege drop in the entrypoint.
+# DEBIAN_FRONTEND=noninteractive prevents tzdata's interactive geographic-area
+# prompt during `apt upgrade` from blocking the build.
 USER root
-RUN apt-get update \
+ARG DEBIAN_FRONTEND=noninteractive
+RUN ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime \
+ && echo "Etc/UTC" > /etc/timezone \
+ && apt-get update \
  && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends gosu tzdata \
  && gosu nobody true \
