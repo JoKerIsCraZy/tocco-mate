@@ -69,11 +69,25 @@ const UNAUTHORIZED = Symbol('Unauthorized');
 
 async function assertOk(res) {
   if (res.status === 401) {
+    // Invaliden Token aus localStorage entfernen, damit ein Reload nicht
+    // erneut sinnlose 401er produziert (würde sonst den Anti-Brute-Force-
+    // Limiter unnötig schnell triggern).
+    clearToken();
     try { if (sse) sse.close(); } catch (_) {}
     showLogin('Token ungültig - bitte neu anmelden');
     const err = new Error('Unauthorized');
     err.silent = true;
     err.code = UNAUTHORIZED;
+    throw err;
+  }
+  if (res.status === 429) {
+    let msg = 'Rate-Limit erreicht - bitte später erneut versuchen';
+    try {
+      const j = await res.clone().json();
+      if (j && j.error) msg = j.error;
+    } catch (_) {}
+    const err = new Error(msg);
+    err.silent = false;
     throw err;
   }
   if (!res.ok) {

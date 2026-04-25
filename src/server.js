@@ -737,7 +737,51 @@ const scrapeLimiter = rateLimit({
   handler: (req, res) => apiError(res, 429, 'Scrape-Rate überschritten')
 });
 
+// ---------- Anti-Brute-Force: Auth-Failure-Limiter ----------
+// Defense-in-Depth gegen Token-Brute-Force. Zwei Schichten:
+//
+//   1. Kurze Schicht: 10 failed Auths / 15min / IP → 15min Lockout.
+//      Stoppt aktive Wörterbuch-/Brute-Force-Attacken.
+//   2. Lange Schicht: 50 failed Auths / 6h / IP → 6h Lockout.
+//      Fängt verteilte Slow-Brute ab (z.B. 9 Versuche alle 15min, die der
+//      kurzen Schicht entgehen würden = ~860/Tag).
+//
+// `skipSuccessfulRequests: true` → erfolgreiche Requests (status < 400)
+// zählen NICHT mit. Nur 401er (und 429er aus dem Limiter selbst) erhöhen
+// den Counter — legitime Nutzung wird also nicht eingeschränkt.
+//
+// `/api/events` (SSE) wird übersprungen: bei 401 reconnectet der Browser
+// per EventSource sofort wieder, was legitime User mit abgelaufenem Token
+// in Sekunden ausperren würde.
+const authFailureLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  skipSuccessfulRequests: true,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skip: (req) => !req.path.startsWith('/api/') || req.path === '/api/events',
+  handler: (req, res) => {
+    logger.log(`🚫 Auth-Brute-Force blockiert (15min): IP ${req.ip} → ${req.method} ${req.path}`, 'warn');
+    return apiError(res, 429, 'Zu viele fehlgeschlagene Auth-Versuche - IP für 15 Minuten gesperrt');
+  }
+});
+
+const authBruteForceLockout = rateLimit({
+  windowMs: 6 * 60 * 60 * 1000,      // 6h
+  limit: 50,
+  skipSuccessfulRequests: true,
+  standardHeaders: false,             // nur die kurze Schicht setzt RateLimit-Headers
+  legacyHeaders: false,
+  skip: (req) => !req.path.startsWith('/api/') || req.path === '/api/events',
+  handler: (req, res) => {
+    logger.log(`⛔ Auth-Lockout (6h): IP ${req.ip} hat 50+ Auth-Fehler in 6h ausgelöst`, 'error');
+    return apiError(res, 429, 'IP wegen wiederholter Auth-Fehler langzeitgesperrt (6h)');
+  }
+});
+
 app.use(globalLimiter);
+app.use(authFailureLimiter);
+app.use(authBruteForceLockout);
 
 // ---------- Auth Middleware (protect /api/*) ----------
 app.use((req, res, next) => {
@@ -753,6 +797,10 @@ app.use((req, res, next) => {
   }
 
   if (!tokensMatch(provided)) {
+    // Sichtbarkeit für Brute-Force-Erkennung. SSE wird gloggt aber von den
+    // authFailure-Limitern selbst übersprungen (siehe oben).
+    const reason = provided ? 'falscher Token' : 'kein Token';
+    logger.log(`🔒 Auth fehlgeschlagen: IP ${req.ip} → ${req.method} ${req.path} (${reason})`, 'warn');
     return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
