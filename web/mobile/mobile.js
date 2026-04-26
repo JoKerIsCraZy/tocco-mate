@@ -482,6 +482,13 @@ function drawSettings(s) {
   form.className = 'm-form';
   form.id = 'settingsForm';
 
+  // Scrape-Card ganz oben — separat von den Fieldsets damit sie immer
+  // sofort sichtbar ist und die Settings-Form drumherum animiert.
+  const scrapeWrap = document.createElement('div');
+  scrapeWrap.id = 'scrapeCard';
+  renderScrapeCard(scrapeWrap);
+  form.append(scrapeWrap);
+
   form.append(
     fsetAnmeldung(s),
     fsetAutomatik(s),
@@ -1218,10 +1225,308 @@ function setBackButton(visible) {
 }
 
 /* ============================================================
+   Scrape-Card (Settings) — Status, Phase-Steps, Button, Progress.
+   ============================================================ */
+function renderScrapeCard(container) {
+  if (!container) return;
+  container.replaceChildren();
+
+  const status = scrapeState.status || {};
+  const running = !!status.running;
+  const phase = status.currentPhase || (running ? 'starting' : null);
+  const hasError = !running && !!status.lastError;
+
+  const card = document.createElement('div');
+  card.className = 'm-scrape';
+
+  // Top row: pill + last-run
+  const top = document.createElement('div');
+  top.className = 'm-scrape__top';
+  const pill = document.createElement('span');
+  pill.className = 'm-scrape__pill ' +
+    (running ? 'm-scrape__pill--running' :
+     hasError ? 'm-scrape__pill--error' : 'm-scrape__pill--idle');
+  const dot = document.createElement('span');
+  dot.className = 'm-scrape__dot';
+  const lab = document.createElement('span');
+  lab.textContent = running
+    ? (PHASE_PILL_LABELS[phase] || 'läuft…')
+    : (hasError ? 'Fehler' : 'bereit');
+  pill.append(dot, lab);
+
+  const lastRun = document.createElement('div');
+  lastRun.className = 'm-scrape__lastrun';
+  lastRun.textContent = status.lastRun
+    ? 'Letzter Lauf ' + fmtRelative(status.lastRun)
+    : 'noch kein Lauf';
+  if (status.lastRun) lastRun.title = new Date(status.lastRun).toLocaleString('de-CH');
+
+  top.append(pill, lastRun);
+  card.append(top);
+
+  // Button — primary CTA
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'm-scrape__btn';
+  btn.disabled = running;
+  if (running) {
+    const sp = document.createElement('span');
+    sp.className = 'm-spinner-sm';
+    btn.append(sp);
+    const t = document.createElement('span');
+    t.textContent = 'Scrape läuft…';
+    btn.append(t);
+  } else {
+    const ic = document.createElement('span');
+    ic.setAttribute('aria-hidden', 'true');
+    ic.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg>';
+    btn.append(ic);
+    const t = document.createElement('span');
+    t.textContent = 'Jetzt scrapen';
+    btn.append(t);
+  }
+  btn.addEventListener('click', triggerScrape);
+  card.append(btn);
+
+  // Progress (only while running)
+  if (running) {
+    const steps = document.createElement('div');
+    steps.className = 'm-scrape__steps';
+    const activeIndex = phase ? PHASE_ORDER.indexOf(phase) : -1;
+    PHASE_ORDER.forEach((p, i) => {
+      const step = document.createElement('div');
+      step.className = 'm-scrape__step';
+      if (activeIndex >= 0) {
+        if (i < activeIndex) step.classList.add('is-done');
+        else if (i === activeIndex) step.classList.add('is-active');
+      }
+      const sd = document.createElement('div');
+      sd.className = 'm-scrape__step-dot';
+      const sl = document.createElement('div');
+      sl.textContent = PHASE_SHORT_LABELS[i];
+      step.append(sd, sl);
+      steps.append(step);
+    });
+    card.append(steps);
+
+    const bar = document.createElement('div');
+    bar.className = 'm-scrape__bar';
+    const fill = document.createElement('div');
+    fill.className = 'm-scrape__bar-fill';
+    const total = PHASE_ORDER.length;
+    const pct = activeIndex < 0
+      ? 5
+      : Math.min(100, Math.round(((activeIndex + 0.5) / total) * 100));
+    fill.style.width = pct + '%';
+    bar.append(fill);
+    card.append(bar);
+
+    const caption = document.createElement('div');
+    caption.className = 'm-scrape__caption';
+    const lab2 = document.createElement('span');
+    lab2.textContent = PHASE_LABELS[phase] || 'Läuft…';
+    const timer = document.createElement('span');
+    timer.id = 'scrapeTimer';
+    timer.textContent = formatElapsed(status.phaseStartedAt);
+    caption.append(lab2, timer);
+    card.append(caption);
+  }
+
+  // Error banner (last run failed)
+  if (hasError) {
+    const err = document.createElement('div');
+    err.className = 'm-scrape__error';
+    err.textContent = String(status.lastError).slice(0, 200);
+    card.append(err);
+  }
+
+  container.append(card);
+
+  // Live timer when running
+  if (running && status.phaseStartedAt && !scrapeTimerHandle) {
+    scrapeTimerHandle = setInterval(() => {
+      const t = document.getElementById('scrapeTimer');
+      if (!t) return;
+      const live = scrapeState.status && scrapeState.status.phaseStartedAt;
+      t.textContent = formatElapsed(live || status.phaseStartedAt);
+    }, 1000);
+  } else if (!running && scrapeTimerHandle) {
+    clearInterval(scrapeTimerHandle);
+    scrapeTimerHandle = null;
+  }
+}
+
+function reRenderScrapeCardIfMounted() {
+  const el = document.getElementById('scrapeCard');
+  if (el) renderScrapeCard(el);
+}
+
+function fmtRelative(iso) {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return '–';
+  const diff = Math.max(0, Date.now() - t);
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return 'gerade eben';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return 'vor ' + min + ' Min';
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return 'vor ' + hr + ' Std';
+  const d = Math.floor(hr / 24);
+  return 'vor ' + d + ' Tag' + (d > 1 ? 'en' : '');
+}
+function formatElapsed(iso) {
+  if (!iso) return '0:00';
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return '0:00';
+  const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+async function triggerScrape() {
+  // Optimistisches Update — Pill schaltet sofort, der nächste Status-Event
+  // (SSE oder die /api/scrape-Response) korrigiert ggf.
+  scrapeState.status = Object.assign({}, scrapeState.status, {
+    running: true, currentPhase: 'starting', phaseStartedAt: new Date().toISOString()
+  });
+  reRenderScrapeCardIfMounted();
+  try {
+    const r = await apiFetch('/api/scrape', { method: 'POST', body: {} });
+    if (r && r.triggered === false) {
+      // 200 mit reason → server hat NICHT gestartet, optimistisches Update zurückrollen
+      if (r.reason === 'already_running') {
+        toast('Scrape läuft bereits');
+      } else if (r.reason === 'cooldown') {
+        toast('Cooldown aktiv — bitte ' + (r.retryInSec || 60) + 's warten', 'err');
+        scrapeState.status = Object.assign({}, scrapeState.status, { running: false });
+        reRenderScrapeCardIfMounted();
+      } else {
+        toast('Scrape nicht gestartet (' + (r.reason || 'unbekannt') + ')', 'err');
+        scrapeState.status = Object.assign({}, scrapeState.status, { running: false });
+        reRenderScrapeCardIfMounted();
+      }
+      // Echten Status nachladen damit UI mit Server synchron ist
+      fetchInitialStatus();
+      return;
+    }
+    toast('Scrape gestartet');
+  } catch (e) {
+    if (e.silent) return;
+    // 429 cooldown response landet hier (apiFetch wirft bei 429)
+    scrapeState.status = Object.assign({}, scrapeState.status, {
+      running: false
+    });
+    reRenderScrapeCardIfMounted();
+    toast(e.message || 'Scrape-Start fehlgeschlagen', 'err');
+  }
+}
+
+/* ============================================================
+   SSE — Server-Sent Events für Live-Status. Pattern wie Dashboard.
+   Reconnect mit exponentiellem Backoff. Token kommt via Query-String,
+   weil EventSource keine Custom-Headers setzen kann.
+   ============================================================ */
+function connectSSE() {
+  const token = getToken();
+  if (!token) return;
+  try {
+    sse = new EventSource('/api/events?token=' + encodeURIComponent(token));
+  } catch (_) {
+    return;
+  }
+  sseEverOpened = false;
+
+  sse.onopen = () => {
+    sseReconnectDelay = 1000;
+    sseEverOpened = true;
+  };
+  sse.onerror = () => {
+    const wasClosed = sse && sse.readyState === 2;
+    try { if (sse) sse.close(); } catch (_) {}
+    sse = null;
+    // Wenn der erste Connect schon scheitert: nicht ewig spammen
+    if (!sseEverOpened && wasClosed) return;
+    setTimeout(connectSSE, sseReconnectDelay);
+    sseReconnectDelay = Math.min(sseReconnectDelay * 2, 15000);
+  };
+  sse.onmessage = (evt) => handleSseEvent(evt.data);
+  ['status', 'log', 'progress'].forEach((name) => {
+    sse.addEventListener(name, (evt) => handleSseEvent(evt.data, name));
+  });
+}
+
+function handleSseEvent(raw, typeHint) {
+  let payload;
+  try { payload = JSON.parse(raw); } catch (_) { return; }
+  if (typeHint === 'log') return;     // Logs interessieren uns mobile nicht
+  if (typeHint === 'progress' || typeHint === 'status' || (typeHint == null && payload && (payload.running != null || payload.currentPhase != null))) {
+    updateStatus(payload);
+  }
+}
+
+function updateStatus(status) {
+  const wasRunning = scrapeState.scraping;
+  scrapeState.status = status;
+  scrapeState.scraping = !!status.running;
+  reRenderScrapeCardIfMounted();
+  // Wenn ein Scrape gerade beendet wurde und wir die Noten/Stundenplan-View
+  // gerade offen haben → einmal frisch laden.
+  if (wasRunning && !status.running && !status.lastError) {
+    const { path } = parseHash();
+    if (path === '/noten') renderNoten();
+    else if (path === '/stundenplan') renderStundenplan();
+  }
+}
+
+async function fetchInitialStatus() {
+  try {
+    const status = await apiFetch('/api/status');
+    if (status) updateStatus(status);
+  } catch (_) { /* Best-effort beim Boot */ }
+}
+
+/* ============================================================
    Service-Worker registration
    ============================================================ */
 // Last SW-registration error (surfaced in Settings → Diagnose).
 let lastSWError = null;
+
+/* ============================================================
+   Scrape state — gespeist aus /api/status (initial) + SSE 'status'
+   Events. Wird in den Settings als Card gerendert.
+   ============================================================ */
+const PHASE_ORDER = ['browser', 'login', 'noten', 'stundenplan', 'saving', 'noten_details'];
+const PHASE_LABELS = {
+  starting:      'Initialisiere…',
+  browser:       'Browser starten…',
+  login:         'Anmelden…',
+  noten:         'Noten laden…',
+  stundenplan:   'Stundenplan laden…',
+  saving:        'Speichern…',
+  noten_details: 'Modul-Details…'
+};
+const PHASE_PILL_LABELS = {
+  starting:      'startet…',
+  browser:       'Browser…',
+  login:         'Login…',
+  noten:         'Noten…',
+  stundenplan:   'Stundenplan…',
+  saving:        'Speichern…',
+  noten_details: 'Details…'
+};
+const PHASE_SHORT_LABELS = ['Browser', 'Login', 'Noten', 'Plan', 'Speich.', 'Details'];
+
+const scrapeState = {
+  status: null,            // letzter Snapshot von /api/status
+  scraping: false,
+  lastSeenRunId: null      // damit wir nach Scrape-Ende einmal Daten reloaden
+};
+let scrapeTimerHandle = null;
+
+let sse = null;
+let sseReconnectDelay = 1000;
+let sseEverOpened = false;
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) {
@@ -1268,6 +1573,9 @@ loginForm.addEventListener('submit', async (ev) => {
     hideLogin();
     if (!window.location.hash) window.location.hash = '#/noten';
     else route();
+    // Nach erfolgreichem Login: Live-Status + SSE starten
+    fetchInitialStatus();
+    connectSSE();
   } catch (e) {
     clearToken();
     if (!e.silent) loginStatus.textContent = e.message || 'Login fehlgeschlagen';
@@ -1279,4 +1587,7 @@ loginForm.addEventListener('submit', async (ev) => {
   if (!getToken()) { showLogin(); return; }
   if (!window.location.hash) window.location.hash = '#/noten';
   else route();
+  // Initial-Status + SSE für Live-Updates der Scrape-Card
+  fetchInitialStatus();
+  connectSSE();
 })();
