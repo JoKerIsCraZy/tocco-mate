@@ -32,22 +32,23 @@ function loadOrGenerateKeys(envSubject) {
     return { publicKey: envPub, privateKey: envPriv, subject: envSubj };
   }
 
-  // 2) Aus data/vapid.json
-  if (fs.existsSync(VAPID_FILE)) {
-    try {
-      const j = JSON.parse(fs.readFileSync(VAPID_FILE, 'utf8'));
-      if (j.publicKey && j.privateKey) {
-        return { publicKey: j.publicKey, privateKey: j.privateKey, subject: j.subject || envSubj };
-      }
-    } catch (_) { /* fallthrough → regenerate */ }
-  }
+  // 2) Aus data/vapid.json — direkt lesen, kein existsSync (TOCTOU-frei).
+  try {
+    const j = JSON.parse(fs.readFileSync(VAPID_FILE, 'utf8'));
+    if (j.publicKey && j.privateKey) {
+      return { publicKey: j.publicKey, privateKey: j.privateKey, subject: j.subject || envSubj };
+    }
+  } catch (_) { /* ENOENT / parse-error / invalid → regenerate */ }
 
-  // 3) Erst-Generierung
+  // 3) Erst-Generierung — atomarer Write via temp + rename, damit ein
+  // paralleler Reader nie eine halbgeschriebene Datei sieht.
   const fresh = webpush.generateVAPIDKeys();
   const out = { publicKey: fresh.publicKey, privateKey: fresh.privateKey, subject: envSubj };
   try {
     fs.mkdirSync(path.dirname(VAPID_FILE), { recursive: true });
-    fs.writeFileSync(VAPID_FILE, JSON.stringify(out, null, 2), { mode: 0o600 });
+    const tmp = VAPID_FILE + '.' + process.pid + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(out, null, 2), { mode: 0o600 });
+    fs.renameSync(tmp, VAPID_FILE);
   } catch (_) { /* nicht persistierbar — keys leben nur in-process */ }
   return out;
 }
