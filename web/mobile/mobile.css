@@ -445,13 +445,22 @@ input, select, textarea { font: inherit; color: inherit; }
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* Wichtig: kein min-inline-size:auto — sonst overflow auf kleinen Screens */
+  min-inline-size: 0;
 }
 .m-fieldset > legend {
+  /* Native <legend> wird vom Browser in die Top-Border des <fieldset>
+     eingebettet — sieht häßlich aus. float+width=100% nimmt sie aus
+     diesem Spezial-Layout raus und macht sie zu einem normalen Block. */
+  float: left;
+  width: 100%;
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-mute);
-  padding: 0 0 4px;
+  padding: 0 0 10px;
+  margin: 0 0 6px;
+  border-bottom: 1px solid var(--border-soft);
   font-weight: 700;
 }
 .m-field { display: flex; flex-direction: column; gap: 6px; }
