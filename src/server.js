@@ -758,6 +758,49 @@ const scrapeLimiter = rateLimit({
   handler: (req, res) => apiError(res, 429, 'Scrape-Rate überschritten')
 });
 
+// Test-Push verbraucht FCM/Mozilla/Apple-Quota — wenn das spamt riskieren wir
+// Push-Service-Suspension. Plus: Subscribe wird vor jedem PWA-Install genau
+// einmal gerufen, mehr als ein paar pro Minute ist bot-ähnlich.
+const pushLimiter = rateLimit({
+  windowMs: 60 * 1000,               // 1 min
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (req, res) => apiError(res, 429, 'Push-Rate überschritten')
+});
+
+// Validiert eine Push-Subscription. Whitelist der erlaubten Push-Service-Hosts
+// verhindert SSRF — sonst könnte ein Angreifer mit gestohlenem API-Token meinen
+// Server arbitrary HTTP-Requests an interne Adressen schicken lassen
+// (webpush.sendNotification → POST an subscription.endpoint).
+const ALLOWED_PUSH_HOST_SUFFIXES = Object.freeze([
+  'fcm.googleapis.com',                  // Chrome / Brave / Edge (Android & Desktop)
+  'updates.push.services.mozilla.com',   // Firefox
+  '.notify.windows.com',                 // Edge Legacy / Windows
+  '.web.push.apple.com',                 // Safari iOS 16.4+ / macOS
+  '.push.apple.com'
+]);
+const B64URL_RE = /^[A-Za-z0-9_\-+/=]+$/;
+function validatePushSubscription(sub) {
+  if (!sub || typeof sub !== 'object') return 'subscription required';
+  if (typeof sub.endpoint !== 'string' || !sub.endpoint) return 'endpoint required';
+  if (sub.endpoint.length > 1024) return 'endpoint too long';
+  let url;
+  try { url = new URL(sub.endpoint); } catch (_) { return 'invalid endpoint URL'; }
+  if (url.protocol !== 'https:') return 'endpoint must be HTTPS';
+  const host = url.hostname.toLowerCase();
+  const hostAllowed = ALLOWED_PUSH_HOST_SUFFIXES.some(h =>
+    h.startsWith('.') ? host.endsWith(h) : host === h
+  );
+  if (!hostAllowed) return 'endpoint host not allowed';
+  if (!sub.keys || typeof sub.keys !== 'object') return 'keys required';
+  if (typeof sub.keys.p256dh !== 'string' || !sub.keys.p256dh) return 'p256dh required';
+  if (sub.keys.p256dh.length > 256 || !B64URL_RE.test(sub.keys.p256dh)) return 'p256dh invalid';
+  if (typeof sub.keys.auth !== 'string' || !sub.keys.auth) return 'auth required';
+  if (sub.keys.auth.length > 64 || !B64URL_RE.test(sub.keys.auth)) return 'auth invalid';
+  return null;
+}
+
 // ---------- Anti-Brute-Force: Auth-Failure-Limiter ----------
 // Defense-in-Depth gegen Token-Brute-Force. Zwei Schichten:
 //
@@ -1091,11 +1134,13 @@ app.get('/api/push/vapid-key', (req, res) => {
   res.json({ publicKey: push.getPublicKey() });
 });
 
-app.post('/api/push/subscribe', (req, res) => {
+app.post('/api/push/subscribe', pushLimiter, (req, res) => {
   if (!push) return apiError(res, 503, 'Web-Push nicht initialisiert');
   const sub = req.body && req.body.subscription;
-  if (!sub || !sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) {
-    return apiError(res, 400, 'Ungültige Subscription');
+  const reason = validatePushSubscription(sub);
+  if (reason) {
+    logger.log('⚠️  Push-Subscribe abgelehnt: ' + reason, 'warn');
+    return apiError(res, 400, 'Ungültige Subscription: ' + reason);
   }
   const ua = (req.get('user-agent') || '').slice(0, 200);
   const d = db.open();
@@ -1112,10 +1157,12 @@ app.post('/api/push/subscribe', (req, res) => {
   }
 });
 
-app.delete('/api/push/subscribe', (req, res) => {
+app.delete('/api/push/subscribe', pushLimiter, (req, res) => {
   if (!push) return apiError(res, 503, 'Web-Push nicht initialisiert');
   const endpoint = req.body && req.body.endpoint;
-  if (!endpoint || typeof endpoint !== 'string') {
+  // Nur Format-Check — die Whitelist trifft nur für SUBSCRIBE zu (sonst kämen
+  // Legacy-Endpoints nie wieder weg, falls die Allowlist mal enger wird).
+  if (typeof endpoint !== 'string' || !endpoint || endpoint.length > 1024) {
     return apiError(res, 400, 'endpoint required');
   }
   const d = db.open();
@@ -1127,7 +1174,7 @@ app.delete('/api/push/subscribe', (req, res) => {
   }
 });
 
-app.post('/api/push/test', async (req, res) => {
+app.post('/api/push/test', pushLimiter, async (req, res) => {
   if (!push) return apiError(res, 503, 'Web-Push nicht initialisiert');
   try {
     const r = await push.sendToAll({
