@@ -7,20 +7,17 @@
   <meta name="theme-color" content="#0f1115" />
   <title>Tocco Mate</title>
   <link rel="stylesheet" href="./style.css" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%236ea8fe'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-family='sans-serif' font-size='34' font-weight='700' fill='%230f1115'%3ET%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" type="image/x-icon" href="./assets/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="./assets/favicon-16.png" />
+  <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
 </head>
 <body>
   <!-- LOGIN OVERLAY -->
   <div id="loginOverlay" class="login-overlay" hidden>
     <form id="loginForm" class="login-card" autocomplete="off">
       <div class="login-card__brand">
-        <div class="brand__mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 19.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13.5"/>
-            <path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H20"/>
-            <path d="M8 8h8M8 12h6"/>
-          </svg>
-        </div>
+        <img class="brand__logo" src="./assets/logo.png" alt="" width="40" height="40" />
         <h1>Tocco Mate</h1>
       </div>
       <p class="login-card__lead">Authentifizierung erforderlich</p>
@@ -38,13 +35,7 @@
   <header class="topbar" role="banner">
     <div class="topbar__inner">
       <div class="brand">
-        <div class="brand__mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 19.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13.5"/>
-            <path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H20"/>
-            <path d="M8 8h8M8 12h6"/>
-          </svg>
-        </div>
+        <img class="brand__logo" src="./assets/logo.png" alt="Tocco Mate" width="40" height="40" />
         <div class="brand__text">
           <div class="brand__title">Tocco <span>Mate</span></div>
           <div class="brand__subtitle">WISS Scraper</div>
@@ -60,6 +51,15 @@
       </div>
 
       <div class="topbar__actions">
+        <a id="mobileViewLink" class="btn btn--ghost" href="/mobile/" title="Smartphone-Ansicht öffnen (kann über Browser zum Home-Screen hinzugefügt werden)">
+          <span class="btn__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="6" y="2" width="12" height="20" rx="2.5"/>
+              <line x1="11" y1="18" x2="13" y2="18"/>
+            </svg>
+          </span>
+          <span class="btn__label">Smartphone-View</span>
+        </a>
         <button id="scrapeBtn" class="btn btn--primary" type="button">
           <span class="btn__icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">

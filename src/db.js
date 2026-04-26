@@ -83,6 +83,19 @@ CREATE TABLE IF NOT EXISTS stundenplan (
 CREATE INDEX IF NOT EXISTS idx_sp_datum   ON stundenplan(datum_iso);
 CREATE INDEX IF NOT EXISTS idx_sp_dozent  ON stundenplan(dozent);
 CREATE INDEX IF NOT EXISTS idx_sp_klasse  ON stundenplan(klasse);
+
+-- Web-Push Subscriptions (PWA aufs Handy installiert).
+-- endpoint ist der Push-Service-URL (FCM/Mozilla/Apple), pro Browser/Gerät unique.
+-- p256dh + auth sind die Krypto-Keys aus PushSubscription.getKey().
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  endpoint    TEXT    NOT NULL UNIQUE,
+  p256dh      TEXT    NOT NULL,
+  auth        TEXT    NOT NULL,
+  ua          TEXT,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 // SQLite kann ALTER TABLE ADD COLUMN nicht "IF NOT EXISTS" — daher prüfen
@@ -778,6 +791,36 @@ function getNotenRow(db, kuerzelId) {
   return stmt.get(String(kuerzelId)) || null;
 }
 
+// ---------- Push subscriptions ----------
+function addPushSubscription(db, sub, ua) {
+  if (!sub || !sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) {
+    throw new Error('invalid subscription');
+  }
+  const stmt = db.prepare(
+    'INSERT INTO push_subscriptions (endpoint, p256dh, auth, ua) VALUES (?, ?, ?, ?) ' +
+    'ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, ' +
+    '  auth = excluded.auth, ua = excluded.ua, last_seen = CURRENT_TIMESTAMP'
+  );
+  stmt.run(sub.endpoint, sub.keys.p256dh, sub.keys.auth, (ua || '').slice(0, 200));
+}
+
+function removePushSubscription(db, endpoint) {
+  if (!endpoint) return 0;
+  const stmt = db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?');
+  const r = stmt.run(endpoint);
+  return r.changes || 0;
+}
+
+function getAllPushSubscriptions(db) {
+  return db.prepare(
+    'SELECT id, endpoint, p256dh, auth FROM push_subscriptions'
+  ).all();
+}
+
+function countPushSubscriptions(db) {
+  return db.prepare('SELECT COUNT(*) AS c FROM push_subscriptions').get().c || 0;
+}
+
 module.exports = {
   open,
   saveNoten,
@@ -797,5 +840,10 @@ module.exports = {
   markDetailScraped,
   getNotenRow,
   classifyPruefung,
-  parseGewichtPct
+  parseGewichtPct,
+  // Push
+  addPushSubscription,
+  removePushSubscription,
+  getAllPushSubscriptions,
+  countPushSubscriptions
 };

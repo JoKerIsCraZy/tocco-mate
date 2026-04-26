@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#0f1115" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Tocco Mate" />
+  <meta name="format-detection" content="telephone=no" />
+  <title>Tocco Mate</title>
+  <link rel="manifest" href="/mobile/manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png" />
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+  <link rel="stylesheet" href="/mobile/mobile.css" />
+</head>
+<body>
+  <!-- LOGIN -->
+  <div id="loginOverlay" class="m-login" hidden>
+    <form id="loginForm" class="m-login__card" autocomplete="off">
+      <div class="m-login__brand">
+        <img class="m-mark" src="/assets/logo.png" alt="" width="40" height="40" />
+        <h1>Tocco Mate</h1>
+      </div>
+      <p class="m-login__lead">Authentifizierung erforderlich</p>
+      <label class="m-field">
+        <span>API-Token</span>
+        <input id="loginToken" type="password" autocomplete="off" spellcheck="false" required />
+      </label>
+      <div class="m-login__status" id="loginStatus"></div>
+      <button class="m-btn m-btn--primary" type="submit">Anmelden</button>
+      <a class="m-login__back" href="/">← zurück zum Dashboard</a>
+    </form>
+  </div>
+
+  <!-- TOP APP-BAR -->
+  <header class="m-appbar" role="banner">
+    <button id="backBtn" class="m-appbar__icon" type="button" aria-label="Zurück" hidden>
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+    </button>
+    <img class="m-appbar__logo" id="appbarLogo" src="/assets/logo.png" alt="" width="32" height="32" />
+    <h1 class="m-appbar__title" id="appbarTitle">Noten</h1>
+    <button id="refreshBtn" class="m-appbar__icon" type="button" aria-label="Neu laden" title="Aktualisieren">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"/>
+        <path d="M20.49 15A9 9 0 1 1 17.65 5.51L23 10"/>
+      </svg>
+    </button>
+  </header>
+
+  <!-- MAIN VIEWPORT -->
+  <main class="m-main" id="main"></main>
+
+  <!-- BOTTOM-NAV -->
+  <nav class="m-bottomnav" id="bottomNav" aria-label="Navigation">
+    <a class="m-tab" href="#/noten" data-route="noten">
+      <span class="m-tab__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13.5"/>
+          <path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H20"/>
+          <path d="M8 8h8M8 12h6"/>
+        </svg>
+      </span>
+      <span class="m-tab__label">Noten</span>
+    </a>
+    <a class="m-tab" href="#/stundenplan" data-route="stundenplan">
+      <span class="m-tab__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+          <line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/>
+          <line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+      </span>
+      <span class="m-tab__label">Plan</span>
+    </a>
+    <a class="m-tab" href="#/settings" data-route="settings">
+      <span class="m-tab__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </span>
+      <span class="m-tab__label">Settings</span>
+    </a>
+  </nav>
+
+  <!-- TOAST -->
+  <div class="m-toast" id="toast" hidden></div>
+
+  <script src="/mobile/mobile.js" defer></script>
+</body>
+</html>

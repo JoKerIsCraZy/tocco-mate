@@ -1,5 +1,7 @@
 ﻿<div align="center">
 
+<img src="web/assets/logo.png" alt="Tocco Mate" width="128" height="128" />
+
 # tocco-mate
 
 **Ein inoffizieller Scraper für das WISS Tocco-Schulportal.**

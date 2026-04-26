@@ -17,6 +17,9 @@ yarn-error.log*
 *.png
 debug-*.png
 login-error.png
+# …aber Web-Assets (Logo, Favicons, PWA-Icons) MÜSSEN ins Repo:
+!web/assets/*.png
+!web/assets/*.ico
 
 # OS
 .DS_Store
@@ -38,3 +41,6 @@ build/
 # Android companion app (lokal, nicht im Repo)
 /toccomate/
 toccomate-release.jks
+
+# Claude Code lokaler State (kein Projektartefakt)
+.claude/

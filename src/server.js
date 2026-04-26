@@ -48,6 +48,18 @@ const scraper = require('./scraper');
 const db = require('./db');
 const bot = require('./bot');
 
+// web-push ist optional — wenn das Paket fehlt (z.B. nach git-clone ohne npm install)
+// laufen Endpoints / Scrape-Block ohne Push weiter und loggen einen Hinweis.
+let push = null;
+try {
+  push = require('./push');
+  push.init();
+  logger.log('🔔 Web-Push initialisiert (VAPID public ' + push.getPublicKey().slice(0, 12) + '…)');
+} catch (e) {
+  push = null;
+  logger.log('⚠️  Web-Push deaktiviert: ' + (e && e.message ? e.message : 'unbekannt'), 'warn');
+}
+
 // settings.js darf über Logger warnen (UI-Patch-Drops, etc.)
 if (typeof settings.setLogger === 'function') {
   settings.setLogger(logger);
@@ -641,6 +653,15 @@ async function runScrapeCycle(reason) {
         if (rc && rc.length) {
           bot.notifyRoomChanges(rc);
         }
+
+        // Web-Push (PWA) parallel zum Telegram-Bot — best-effort.
+        if (push) {
+          try {
+            const gcAll = state.lastStats && state.lastStats.noten && state.lastStats.noten.gradeChanges;
+            if (gcAll && gcAll.length) push.notifyGradeChanges(gcAll).catch(() => {});
+            if (rc && rc.length) push.notifyRoomChanges(rc).catch(() => {});
+          } catch (_) { /* push ist best-effort */ }
+        }
         // Wöchentlicher Detail-Refresh: Push für Module mit neuen ZP/LB
         // die NICHT bereits durch einen gradeChange-Push abgedeckt waren.
         const wr = state.lastStats && state.lastStats.weeklyReport;
@@ -1062,6 +1083,65 @@ app.post('/api/scrape', scrapeLimiter, async (req, res) => {
   res.json({ triggered: true });
 });
 
+// ---------- Web-Push (PWA) ----------
+// VAPID public key — auch ohne Auth abrufbar wäre OK, aber wir lassen die
+// globale auth-middleware drüber walten (kein Geheimnis, aber einheitlich).
+app.get('/api/push/vapid-key', (req, res) => {
+  if (!push) return apiError(res, 503, 'Web-Push nicht initialisiert');
+  res.json({ publicKey: push.getPublicKey() });
+});
+
+app.post('/api/push/subscribe', (req, res) => {
+  if (!push) return apiError(res, 503, 'Web-Push nicht initialisiert');
+  const sub = req.body && req.body.subscription;
+  if (!sub || !sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) {
+    return apiError(res, 400, 'Ungültige Subscription');
+  }
+  const ua = (req.get('user-agent') || '').slice(0, 200);
+  const d = db.open();
+  try {
+    push.addSubscription(d, sub, ua);
+    const total = db.countPushSubscriptions(d);
+    logger.log('🔔 Push-Subscription registriert (total ' + total + ')');
+    res.json({ ok: true, total });
+  } catch (e) {
+    logger.log('⚠️  Push-Subscribe fehlgeschlagen: ' + (e && e.message), 'warn');
+    apiError(res, 500, 'Subscription konnte nicht gespeichert werden');
+  } finally {
+    try { d.close(); } catch (_) {}
+  }
+});
+
+app.delete('/api/push/subscribe', (req, res) => {
+  if (!push) return apiError(res, 503, 'Web-Push nicht initialisiert');
+  const endpoint = req.body && req.body.endpoint;
+  if (!endpoint || typeof endpoint !== 'string') {
+    return apiError(res, 400, 'endpoint required');
+  }
+  const d = db.open();
+  try {
+    const removed = push.removeSubscription(d, endpoint);
+    res.json({ ok: true, removed });
+  } finally {
+    try { d.close(); } catch (_) {}
+  }
+});
+
+app.post('/api/push/test', async (req, res) => {
+  if (!push) return apiError(res, 503, 'Web-Push nicht initialisiert');
+  try {
+    const r = await push.sendToAll({
+      title: 'Tocco Mate',
+      body: 'Test-Benachrichtigung — alles läuft! ✓',
+      url: '/mobile/',
+      tag: 'test'
+    });
+    res.json({ ok: true, sent: r.sent, removed: r.removed });
+  } catch (e) {
+    apiError(res, 500, e && e.message ? e.message : 'Push-Test fehlgeschlagen');
+  }
+});
+
 // ---------- Logs ----------
 app.get('/api/logs', (req, res) => {
   const limit = parseInt(req.query.limit, 10);
@@ -1102,12 +1182,27 @@ app.get('/api/events', (req, res) => {
 // ---------- Static Web-UI Fallback ----------
 const WEB_DIR = path.join(process.cwd(), 'web');
 if (fs.existsSync(WEB_DIR)) {
-  app.use(express.static(WEB_DIR));
-  // SPA-Fallback: alles was nicht /api/* ist → index.html
+  // .webmanifest MIME explizit setzen (Express/send kennt's evtl. nicht).
+  // Service-Worker NIE cachen, sonst sieht der Browser SW-Updates nicht.
+  app.use(express.static(WEB_DIR, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.webmanifest')) {
+        res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+      } else if (filePath.endsWith('sw.js')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+    }
+  }));
+  // SPA-Fallback: alles was nicht /api/* ist → passende index.html
+  // /mobile bzw. /mobile/* → web/mobile/index.html (eigene SPA mit Hash-Router)
+  // alles andere → web/index.html (Dashboard)
   app.use((req, res, next) => {
     if (req.method !== 'GET') return next();
     if (req.path.startsWith('/api/')) return next();
-    const indexPath = path.join(WEB_DIR, 'index.html');
+    const isMobile = req.path === '/mobile' || req.path.startsWith('/mobile/');
+    const indexPath = isMobile
+      ? path.join(WEB_DIR, 'mobile', 'index.html')
+      : path.join(WEB_DIR, 'index.html');
     if (fs.existsSync(indexPath)) return res.sendFile(indexPath);
     next();
   });

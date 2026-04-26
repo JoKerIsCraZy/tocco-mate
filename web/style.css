@@ -130,6 +130,13 @@ button {
   color: var(--accent-ink);
   box-shadow: 0 6px 18px rgba(110,168,254,.35), inset 0 0 0 1px rgba(255,255,255,.18);
 }
+.brand__logo {
+  width: 40px; height: 40px;
+  display: block;
+  border-radius: 10px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 4px 12px rgba(110,168,254,.25));
+}
 .brand__title {
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -741,6 +748,7 @@ button {
 .btn--sm { padding: 4px 10px; font-size: 12px; }
 .btn--ghost { background: var(--surface-2); color: var(--text-mute); border: 1px solid var(--border-soft); }
 .btn--ghost:hover { background: var(--surface-3); color: var(--text); }
+a.btn:hover { text-decoration: none; }
 
 /* Destruktive Aktion (Stundenplan zurücksetzen) — gedämpfter Rot-Tint, wird
    beim Hover deutlicher. Soll nicht versehentlich gedrückt werden. */
